@@ -1,0 +1,195 @@
+<?xml version="1.0" ?>
+<robot name="Hiwonder" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<xacro:include filename="$(find Hiwonder_description)/urdf/materials.xacro" />
+<xacro:include filename="$(find Hiwonder_description)/urdf/Hiwonder.trans" />
+<xacro:include filename="$(find Hiwonder_description)/urdf/Hiwonder.gazebo" />
+<link name="base_link">
+  <inertial>
+    <origin xyz="1.0914827906389602e-06 0.09260862084125268 0.03056402721165038" rpy="0 0 0"/>
+    <mass value="1.5251096871562557"/>
+    <inertia ixx="0.008261" iyy="0.002907" izz="0.009107" ixy="0.0" iyz="0.001105" ixz="-0.0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="second_link_1">
+  <inertial>
+    <origin xyz="0.001515564224594493 1.7928644227976909e-06 0.024809430057853542" rpy="0 0 0"/>
+    <mass value="0.37909012139587217"/>
+    <inertia ixx="0.000161" iyy="0.00016" izz="0.000201" ixy="0.0" iyz="0.0" ixz="-6e-06"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.0 -0.056304 -0.060801" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/second_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0.0 -0.056304 -0.060801" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/second_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="third_link_1">
+  <inertial>
+    <origin xyz="-0.027698296621640646 0.03104027583896596 0.04168837472454898" rpy="0 0 0"/>
+    <mass value="0.16226233466168985"/>
+    <inertia ixx="0.000203" iyy="0.000223" izz="0.000169" ixy="-0.0" iyz="-9e-05" ixz="-0.0"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.028042 -0.046304 -0.095801" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/third_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.028042 -0.046304 -0.095801" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/third_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="fourth_link_1">
+  <inertial>
+    <origin xyz="-0.025726869907649247 -0.014316329119973825 0.01864921442376344" rpy="0 0 0"/>
+    <mass value="0.2923899366437736"/>
+    <inertia ixx="0.000208" iyy="0.000198" izz="0.000149" ixy="1e-06" iyz="8.9e-05" ixz="-2e-06"/>
+  </inertial>
+  <visual>
+    <origin xyz="-0.028042 -0.108414 -0.179217" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/fourth_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.028042 -0.108414 -0.179217" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/fourth_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="fifth_link_1">
+  <inertial>
+    <origin xyz="0.024821511351616442 -0.02017792012395629 -0.009479484341226002" rpy="0 0 0"/>
+    <mass value="0.29380221652800204"/>
+    <inertia ixx="0.000201" iyy="0.000102" izz="0.000168" ixy="-6e-06" iyz="3e-06" ixz="-1e-06"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.0285 -0.054537 -0.249542" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/fifth_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0.0285 -0.054537 -0.249542" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/fifth_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="sixth_link_1">
+  <inertial>
+    <origin xyz="-0.010116017933357755 -0.02248782358725894 -0.010025570313181048" rpy="0 0 0"/>
+    <mass value="0.1573394430491276"/>
+    <inertia ixx="4.4e-05" iyy="6.2e-05" izz="4.9e-05" ixy="-3e-06" iyz="-3e-06" ixz="-0.0"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.003224 0.009777 -0.249338" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/sixth_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0.003224 0.009777 -0.249338" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/sixth_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="seventh_link_1">
+  <inertial>
+    <origin xyz="-0.0013419611646981527 -0.04606682458154797 -3.0105183902451316e-05" rpy="0 0 0"/>
+    <mass value="0.11741284268359674"/>
+    <inertia ixx="8.6e-05" iyy="5.6e-05" izz="0.000112" ixy="0.0" iyz="-4e-06" ixz="2.3e-05"/>
+  </inertial>
+  <visual>
+    <origin xyz="0.002147 0.017264 -0.250874" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/seventh_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="silver"/>
+  </visual>
+  <collision>
+    <origin xyz="0.002147 0.017264 -0.250874" rpy="0 0 0"/>
+    <geometry>
+      <mesh filename="package://Hiwonder_description/meshes/seventh_link_1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<joint name="Revolute 13" type="continuous">
+  <origin xyz="0.0 0.056304 0.060801" rpy="0 0 0"/>
+  <parent link="base_link"/>
+  <child link="second_link_1"/>
+  <axis xyz="0.0 0.0 -1.0"/>
+</joint>
+
+<joint name="Revolute 14" type="continuous">
+  <origin xyz="0.028042 -0.01 0.035" rpy="0 0 0"/>
+  <parent link="second_link_1"/>
+  <child link="third_link_1"/>
+  <axis xyz="-1.0 -0.0 0.0"/>
+</joint>
+
+<joint name="Revolute 15" type="continuous">
+  <origin xyz="0.0 0.06211 0.083416" rpy="0 0 0"/>
+  <parent link="third_link_1"/>
+  <child link="fourth_link_1"/>
+  <axis xyz="-1.0 0.0 0.0"/>
+</joint>
+
+<joint name="Revolute 16" type="continuous">
+  <origin xyz="-0.056542 -0.053877 0.070325" rpy="0 0 0"/>
+  <parent link="fourth_link_1"/>
+  <child link="fifth_link_1"/>
+  <axis xyz="1.0 0.0 -0.0"/>
+</joint>
+
+<joint name="Revolute 17" type="continuous">
+  <origin xyz="0.025276 -0.064314 -0.000204" rpy="0 0 0"/>
+  <parent link="fifth_link_1"/>
+  <child link="sixth_link_1"/>
+  <axis xyz="-0.004192 0.999965 -0.007266"/>
+</joint>
+
+<joint name="Rigid 18" type="fixed">
+  <origin xyz="0.001077 -0.007487 0.001536" rpy="0 0 0"/>
+  <parent link="sixth_link_1"/>
+  <child link="seventh_link_1"/>
+</joint>
+
+</robot>
