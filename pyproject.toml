@@ -7,5 +7,6 @@ requires-python = ">=3.12"
 dependencies = [
     "genesis-world>=0.3.14",
     "gymnasium>=1.2.3",
+    "rsl-rl-lib>=4.0.1",
     "torch>=2.10.0",
 ]
