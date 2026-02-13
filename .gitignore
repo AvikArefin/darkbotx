@@ -1,0 +1,11 @@
+.venv
+**/__pycache__/
+**/tensorboard_log/
+.vscode
+*.log
+.DS_Store
+*.zip
+wandb/
+.env
+models/
+ur5_reinforcement_learning_grasp_object/
