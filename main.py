@@ -6,6 +6,8 @@ import time
 from code.wrapper import FrankaRSLWrapper
 from rsl_rl.runners import OnPolicyRunner
 
+import tensorboard
+
 def test():
     # Let's run 64 environments at once
     n_envs = 24
@@ -28,18 +30,21 @@ def test():
 
 
 train_cfg = {
-    "runner": {
-        "class_name": "OnPolicyRunner",
-        "num_steps_per_env": 24,
-        "max_iterations": 1500,
-        "save_interval": 50,
-        "experiment_name": "franka_fast_reach",
-        "run_name": "genesis_test",
-    },
+    "class_name": "OnPolicyRunner",
+    "num_steps_per_env": 24, # This stays here for the Runner
+    "max_iterations": 1500,
+    "save_interval": 50,
+    "experiment_name": "franka_fast_reach",
+    "run_name": "genesis_test",
+    
+    # Notice how 'actor' and 'critic' are no longer inside a 'policy' key.
     "actor": {
         "class_name": "MLPModel",
         "hidden_dims": [256, 128, 64],
         "activation": "elu",
+        "stochastic": True,
+        "init_noise_std": 1.0,
+        "noise_std_type": "scalar",
     },
     "critic": {
         "class_name": "MLPModel",
@@ -61,22 +66,31 @@ train_cfg = {
         "desired_kl": 0.01,
         "max_grad_norm": 1.0,
     },
+    "runner": {
+        "class_name": "OnPolicyRunner",
+        "num_steps_per_env": 24, # This stays here for the Runner
+        "max_iterations": 1500,
+        "save_interval": 50,
+        "experiment_name": "franka_fast_reach",
+        "run_name": "genesis_test",
+    },
+    # CRUCIAL: This explicitly links the TensorDict keys to the Actor/Critic
     "obs_groups": {
         "actor": ["policy"], 
         "critic": ["policy"]
-    }
+    },
 }
 
 def main():
-    # 1. Initialize your wrapped env
     device = "cuda:0" if torch.cuda.is_available() else "mps:0" if torch.backends.mps.is_available() else "cpu:0"
-    env_wrapped = FrankaRSLWrapper(FastFrankaEnv(n_envs=2048, show_viewer=False), device=device)
+    
+    env = FastFrankaEnv(n_envs=2048, show_viewer=False)
+    env_wrapped = FrankaRSLWrapper(env, device=device)
 
-    # 2. Setup the Runner
-    runner = OnPolicyRunner(env_wrapped, train_cfg, log_dir="logs/", device="mps")
+    runner = OnPolicyRunner(env_wrapped, train_cfg, log_dir="logs/", device=device)
 
-    # 3. Start Training
-    runner.learn(num_learning_iterations=train_cfg["runner"]["max_iterations"], init_at_random_step=True)
+    # Start Training
+    runner.learn(num_learning_iterations=train_cfg["runner"]["max_iterations"])
 
 if __name__ == "__main__":
     main()

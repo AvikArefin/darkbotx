@@ -18,5 +18,5 @@ Incase the setup fails, you can manually install uv on your system then run the 
 
 ```
 uv init --python 3.12
-uv add torch genesis-world
+uv add torch genesis-world tensorboard rsl-rl-lib
 ```

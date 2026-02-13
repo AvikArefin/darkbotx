@@ -1,43 +1,52 @@
-import torch
+from rsl_rl.env import VecEnv
+from tensordict import TensorDict
+import torch # The abstract class you shared earlier
 
-class FrankaRSLWrapper:
+class FrankaRSLWrapper(VecEnv):
     def __init__(self, env, device):
         self.env = env
-        # Set these based on your panda.xml and star.urdf
-        self.num_envs = env.n_envs
-        self.num_obs = 9    # 7 joints + 2 finger positions (or your obs size)
-        self.num_privileged_obs = None # Optional for teacher-student training
-        self.num_actions = 9 # Number of joints to control
-        
-        # Fixed device - everything must be on GPU
         self.device = device
+        
+        # Required by RSL-RL VecEnv interface
+        self.num_envs = env.n_envs
+        self.num_actions = 9 
+        self.max_episode_length = 500
+        self.cfg = {} 
+        
+        # Tracking buffers
+        self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
 
-    def get_observations(self):
-        # Genesis provides these directly as torch tensors
+    def get_observations(self) -> TensorDict:
         obs = self.env.franka.get_dofs_position()
-        return obs
+        return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device)
 
-    def reset(self):
-        self.env.reset()
-        return self.get_observations(), None # (obs, privileged_obs)
-
-    def step(self, actions):
-        # 1. Take action and step physics
-        # clip actions if necessary: actions = torch.clip(actions, -1.0, 1.0)
-        obs, star_pos = self.env.step(actions)
+    def step(self, actions: torch.Tensor):
+        # 1. Call the underlying physics env
+        obs, rewards, dones, infos = self.env.step(actions)
         
-        # 2. Vectorized Reward (Stay on GPU!)
-        # Distance between Franka and the star
-        dist = torch.norm(obs[:, :3] - star_pos, dim=-1)
-        rewards = -dist
+        # 2. Logic for timeouts (Truncation)
+        self.episode_length_buf += 1
+        time_outs = self.episode_length_buf >= self.max_episode_length
         
-        # 3. Vectorized Dones
-        # Example: Reset if within 5cm or after 500 steps
-        dones = (dist < 0.05).to(torch.float32)
+        # 3. Combine Termination (dones) and Truncation (time_outs)
+        # Ensure both are bool before bitwise OR
+        dones = dones.to(torch.bool) | time_outs.to(torch.bool)
         
-        # 4. Handle auto-resets (Crucial for speed!)
+        # 4. Handle Resets
         if dones.any():
             env_ids = dones.nonzero(as_tuple=False).flatten()
             self.env.reset_at(env_ids)
+            self.episode_length_buf[env_ids] = 0
+            # Re-fetch observations for the reset environments
+            obs = self.env.franka.get_dofs_position()
             
-        return obs, None, rewards, dones, {} # (obs, priv_obs, rewards, dones, infos)
+        # 5. Package for RSL-RL
+        obs_td = TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device)
+        infos["time_outs"] = time_outs
+        
+        return obs_td, rewards, dones, infos
+
+    def reset(self):
+        obs = self.env.reset()
+        self.episode_length_buf.zero_()
+        return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device), {}
