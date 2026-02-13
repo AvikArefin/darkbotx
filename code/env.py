@@ -4,7 +4,7 @@ import torch
 class FastFrankaEnv:
     def __init__(self, n_envs=2, show_viewer=True):
         self.n_envs = n_envs
-        gs.init(backend=gs.gpu)
+        gs.init(backend=gs.gpu if torch.cuda.is_available() or torch.backends.mps.is_available() else gs.cpu)
         
         # 1. Setup scene with n_envs
         self.scene = gs.Scene(
@@ -38,7 +38,7 @@ class FastFrankaEnv:
         obs = self.franka.get_dofs_position()
         star_pos = self.star.get_pos()
         
-        return obs, star_pos
+        return obs
 
     def reset(self):
         self.scene.reset()
