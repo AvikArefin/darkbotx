@@ -16,12 +16,12 @@ class FastFrankaEnv(VecEnv):
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
         
-        gs.init(backend=gs.gpu if self.device.type != "cpu" else gs.cpu, performance_mode= not show_viewer)
+        gs.init(backend=gs.gpu if self.device.type != "cpu" else gs.cpu, performance_mode= not show_viewer, debug=True, logging_level="debug")
         
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
                 dt=0.01,       # Simulation timestep (e.g., 100Hz)
-                substeps=2,    # Physics substeps per dt (increases stability)
+                substeps=10,    # Physics substeps per dt (increases stability)
             ),
             show_viewer=show_viewer,
             viewer_options=gs.options.ViewerOptions(
@@ -30,8 +30,8 @@ class FastFrankaEnv(VecEnv):
         )
         
         self.scene.add_entity(gs.morphs.Plane())
-        self.robot = self.scene.add_entity(gs.morphs.MJCF(file='xml/franka_emika_panda/panda.xml'))
-        self.target = self.scene.add_entity(gs.morphs.URDF(file='assets/star/star.urdf', pos=(0.6, 0, 0.45)))
+        self.robot = self.scene.add_entity(gs.morphs.MJCF(file='xml/franka_emika_panda/panda.xml', pos  =(1.0, 1.0, 0.0),))
+        self.target = self.scene.add_entity(gs.morphs.URDF(file='assets/DarkCube/DarkCube.urdf', pos=(0.6, 0, 0.45)))
 
         self.scene.build(n_envs=self.n_envs, env_spacing=(1.5, 1.5))
         
