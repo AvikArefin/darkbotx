@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="DarkCube">
+    <link name="Component1">
+        <inertial>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <mass value="7.85" />
+            <inertia ixx="0.013083333333333327" iyy="0.013083333333333327" izz="0.013083333333333327" ixy="0.0" iyz="0.0" ixz="0.0" />
+        </inertial>
+        <visual name="Component1_visual">
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <geometry>
+                <mesh filename="meshes/Component1.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </visual>
+        <collision name="Component1_collision">
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0" />
+            <geometry>
+                <mesh filename="meshes/Component1.stl" scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+    </link>
+</robot>
