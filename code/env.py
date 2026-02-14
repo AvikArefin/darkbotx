@@ -31,12 +31,12 @@ class FastFrankaEnv(VecEnv):
         
         self.scene.add_entity(gs.morphs.Plane())
         self.robot = self.scene.add_entity(gs.morphs.MJCF(file='xml/franka_emika_panda/panda.xml', pos  =(1.0, 1.0, 0.0),))
-        self.target = self.scene.add_entity(gs.morphs.URDF(file='assets/DarkCube/DarkCube.urdf', pos=(0.6, 0, 0.45)))
+        self.target = self.scene.add_entity(gs.morphs.URDF(file='assets/DarkCube/DarkCube.urdf', pos=(0.5, 0.5, 0.04)))      # OK (x, y, z) not 0
 
-        self.scene.build(n_envs=self.n_envs, env_spacing=(1.5, 1.5))
-        
         self.init_robot_pos = torch.zeros(self.robot.n_dofs, device=self.device)
-        self.init_target_pos = torch.tensor([0.6, 0.45, 0], device=self.device)
+        self.init_target_pos = torch.tensor([0.6, 0.6, 0.04], device=self.device)                                             # OK (x, y, z) not 0
+        
+        self.scene.build(n_envs=self.n_envs, env_spacing=(1.5, 1.5))
         
         # Tracking buffers for RSL-RL logic
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
@@ -86,20 +86,27 @@ class FastFrankaEnv(VecEnv):
         #         color=(0, 1, 0),
         #     )
         
-        # Distance from robot to target
+        # 1. Distance from robot gripper to target (Goal)
         dist = torch.norm(ee_pos - target_pos, dim=-1)
         
-        # Distance from target to its initial starting point
-        target_displacement = torch.norm(target_pos - self.init_target_pos, dim=-1)
+        # 2. Calculate Horizontal (XY) displacement from initial position
+        # We slice [:, :2] to get only X and Y coordinates
+        target_xy_dist = torch.norm(target_pos[:, :2] - self.init_target_pos[:2], dim=-1)
         
-        # If target moves more than 10cm, consider it "thrown away"
-        is_thrown = target_displacement > 0.10 
+        # 3. Check if target is "on the ground" (e.g., z < 3cm)
+        is_on_ground = target_pos[:, 2] < 0.03
         
-        # 3. Rewards & Dones
-        # Apply a heavy penalty if the target is thrown
-        rewards = -dist - (is_thrown.float() * 10.0) 
+        # 4. Define Penalty Condition:
+        # It is "sliding" if it moved horizontally > 5cm WHILE sitting on/near the ground
+        is_sliding = (target_xy_dist > 0.05) & is_on_ground
         
-        termination_dones = (dist < 0.05) | is_thrown
+        # 5. Rewards & Dones
+        # Penalty is applied if sliding. 
+        # Note: We replaced the old 'is_thrown' logic with this specific sliding check.
+        rewards = -dist - (is_sliding.float() * 10.0) 
+        
+        # Terminate if task is solved (close to gripper) or if constraint violated (sliding)
+        termination_dones = (dist < 0.05) | is_sliding
         
         # 3. Handle Timeouts (Truncation)
         self.episode_length_buf += 1
