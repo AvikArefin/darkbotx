@@ -1,8 +1,66 @@
-import torch
-from code.env import FastFrankaEnv
+import os
+import sys
+import argparse
+import numpy as np
 
+# RL training imports
+import torch
 from rsl_rl.runners import OnPolicyRunner
 
+# training log
+import wandb
+
+# custom imports
+from code.env import FastFrankaEnv
+from code.logger_setup import setup_logger
+from code.monitor import Monitor
+
+# Register the custom environment with Gymnasium
+ID: str = "PandaPickAndPlace-v0"                         # <name>-v<version>
+ENTRY_POINT: str = "environment:PandaPickAndPlaceEnv"    # <filename/module>:<class_name>
+
+MAX_EPISODE_STEPS: int = int(4e2)
+MODEL_PATH = "models/sac_panda_pickandplace.zip"
+DEFAULT_TOTAL_TIMESTEPS = 500_000
+TOTAL_EPISODES=10
+DEFAULT_CONTROL_MODE="ee"
+
+# logger setup
+logger = setup_logger(__name__)
+
+# --- ARGS ---
+def positive_int(value):
+    """Custom argparse type for strictly positive integers."""
+    try:
+        ivalue = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{value}' is not a valid integer.")
+        
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"Value must be a positive integer, got {value}.")
+    return ivalue
+
+def get_args():
+    parser = argparse.ArgumentParser(description="Run robot arm simulations.")
+
+    parser.add_argument("-m", "--manual", action="store_true", help="Run manual simulation.")
+
+    parser.add_argument("-t", "--training", nargs="?", const=DEFAULT_TOTAL_TIMESTEPS, type=positive_int, help="RL training. Trains new model if no --load provided. default: %(const)s")
+    parser.add_argument("-r","--random", nargs="?", const=TOTAL_EPISODES, type=positive_int, help="Run simulation with random actions. default: %(const)s")
+    parser.add_argument("-i", "--inference", nargs="?", const=TOTAL_EPISODES, type=positive_int, help="RL model inference simulation with trained model. Loads default model if no --load arg passed. default: %(const)s")
+    
+    parser.add_argument("--load", nargs="?", const=MODEL_PATH, type=str, default=None, help="Pass model to -i & -t. default: %(const)s")
+    parser.add_argument("--control_mode", nargs="?", const=DEFAULT_CONTROL_MODE, type=str, default=DEFAULT_CONTROL_MODE, help="PyBullet Env Control Mode. default: %(const)s")
+    parser.add_argument("--monitor", action="store_true", help="provides monitor for env")
+
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    return parser.parse_args()
+args = get_args()
+
+# configuration
 train_cfg = {
     "class_name": "OnPolicyRunner",
     # General
@@ -73,15 +131,180 @@ train_cfg = {
     },
 }
 
-def main():
-    device = "cuda:0" if torch.cuda.is_available() else "mps:0" if torch.backends.mps.is_available() else "cpu:0"
+# --- TRAINING: functions and classes ---
+def run_simulation(model, id: str, episodes: int = 3):
+    """Runs the simulation with the given model."""
+
+    monitor : Monitor = Monitor(sys.argv)
+
+    # Create a single environment with rendering enabled.
+    env = gym.make(id, render_mode="human", control_mode=args.control_mode)
     
-    env = FastFrankaEnv(n_envs=2048, show_viewer=False)
+    if model is None:
+        logger.info("No model provided, using random actions.")
+        model = RandomPolicy(env.action_space)
+    
+    try:
+        for episode in range(episodes):
+            logger.info(f"--- Starting Episode {episode + 1} ---")
 
-    runner = OnPolicyRunner(env, train_cfg, log_dir="logs/", device=device)
+            # GUI: update episode
+            monitor.set_episode(episode + 1)
+            monitor.reset_plot()
 
-    # Start Training
-    runner.learn(num_learning_iterations=train_cfg["max_iterations"])
+            obs, _ = env.reset()
+            terminated = False
+            truncated = False
+            
+            step_counter = 0
+            total_reward = 0
+            while not terminated and not truncated:
+                step_counter += 1
 
+                # logger.info(f"{10*'-'} STEP_{step_counter} {10*'-'}")
+                action, _states = model.predict(obs, deterministic=True)
+
+                obs, reward, terminated, truncated, info = env.step(action)
+
+                total_reward += float(reward)
+
+                # GUI: update debug monitor
+                monitor.set_cube_label(info["cube_info"])
+
+                monitor.update_plot(total_reward)
+                monitor.update_joints(info)
+                monitor.update_gui()
+
+        exit_code = monitor.exec()
+        logger.info(f"Monitor close with exit code: {exit_code}")
+    except KeyboardInterrupt:
+        logger.info("Simulation interrupted by user.")
+    finally:
+        env.close()
+
+def run_manual_simulation(id: str):
+    """
+    Runs the simulation in manual control mode using QTimer for the loop.
+    """
+
+    monitor : Monitor = Monitor(sys.argv)
+
+    # 1. Setup Environment with a high step limit for continuous play
+    env = gym.make(id, render_mode="human", control_mode="joints", max_episode_steps=999999)
+    obs, _ = env.reset()
+    
+    total_reward: float = 0.
+    step_count: int = 0
+
+    def physics_loop():       
+        nonlocal step_count, total_reward
+        
+        # A. Read Sliders -> Action Vector (size 8: 7 arm + 1 gripper)
+        action = np.zeros(8)
+        
+        # Map Arm Sliders (indices 0-6)
+        for i in range(7):
+            slider_widget = monitor.joints_var[i]
+            val = slider_widget.slider.value() # 0 to 1000
+            action[i] = (val / 500.0) - 1.0    # Map to -1.0 to 1.0
+            
+            # Update label to show physical value
+            phys_val = slider_widget.min_val + (val / 1000.0) * slider_widget.range_span
+            slider_widget.label.setText(f"{slider_widget.name}: {phys_val:.4f}")
+
+        # Map Gripper Slider (index 7)
+        # We use the 8th slider to control the gripper action
+        gripper_slider = monitor.joints_var[7]
+        g_val = gripper_slider.slider.value()
+        action[7] = (g_val / 500.0) - 1.0
+        
+        # Update gripper labels (Panda has two finger joints, usually synced)
+        phys_g = gripper_slider.min_val + (g_val / 1000.0) * gripper_slider.range_span
+        gripper_slider.label.setText(f"{gripper_slider.name}: {phys_g:.4f}")
+        if len(monitor.joints_var) > 8:
+            monitor.joints_var[8].label.setText(f"{monitor.joints_var[8].name}: {phys_g:.4f}")
+            # Mirror the slider position visually for the second finger
+            monitor.joints_var[8].slider.setValue(g_val)
+
+        # B. Step Physics
+        # obs, reward, terminated, truncated, info = env.unwrapped.interactive_step(action)
+        obs, reward, terminated, truncated, info = env.step(action)
+        
+        step_count += 1
+        total_reward += float(reward)
+
+        # C. Update Telemetry
+        monitor.update_plot(total_reward)
+        monitor.set_cube_label(info["cube_info"])
+
+        # D. Handle Reset (Soft Reset)
+        if terminated:
+            logger.info("Environment terminated. Resetting...")
+            env.reset()
+            # We don't reset total_reward here so the plot continues 
+            # as a "lifetime" reward, or call monitor.reset_plot() if preferred.
+
+    # 4. Start the GUI Event Loop
+    try:
+        monitor.start_manual_loop(physics_loop)
+        # This blocks until the window is closed
+        exit_code = monitor.exec()
+        logger.info(f"Monitor close with exit code: {exit_code}")
+    except KeyboardInterrupt:
+        logger.info("Simulation interrupted by user.")
+    except Exception as e:
+        logger.error(f"Error in manual simulation: {e}")
+    finally:
+        env.close()
+        logger.info("Environment closed.")
+
+def rl_training():
+    # For training, episodes are not explicitly defined since we train for a total number of timesteps.
+    n_envs = 4
+    show_viewer = True
+
+    env = FastFrankaEnv(num_envs=n_envs, show_viewer=show_viewer)
+    
+    # RSL-RL runner
+    runner = OnPolicyRunner(env, train_cfg, device=env.device)
+    runner.learn()
+
+def main():
+    """Main function to train and evaluate the model."""
+    
+    # different modes: --manual, --random, --training
+    try:
+        if args.random:
+            logger.info("--- GUI: RANDOM ACTION SIMULATION ---")
+            # run_simulation(model=None, id=ID, episodes=args.random)
+            logger.info("FINISHED. Running simulation with random actions.")
+        if args.manual:
+            logger.info("--- GUI: MANUAL SIMULATION ---")
+            # run_manual_simulation(id=ID)
+        if args.training:
+            logger.info("--- RL TRAINING ---")
+            rl_training()
+        if args.inference:
+            logger.info(f"--- INFERENCE RL MODEL WITH SIMULATION ---")
+
+            trained_model = None 
+            if args.load and os.path.exists(args.load):
+                logger.info(f"Inferencing '{args.load}' model")
+            elif os.path.exists(MODEL_PATH):
+                logger.info(f"Inferencing '{MODEL_PATH}' model")
+            else:
+                logger.error("No trained model Found!")
+
+            if trained_model:
+                # run_simulation(model=trained_model, id=ID, episodes=args.inference)
+                pass
+    except KeyboardInterrupt:
+        logger.warning("\nCtrl + C received! Cleaning up resources ...")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+    finally:
+        # Force pybullet to disconnect and the app to quit
+        logger.info("SHUTDOWN COMPLETE")
+ 
 if __name__ == "__main__":
     main()

@@ -6,10 +6,9 @@ from tensordict import TensorDict
 
 # Following the RSL RL API
 class FastFrankaEnv(VecEnv):
-    def __init__(self, n_envs=1, show_viewer=False):
-        self.n_envs = n_envs
+    def __init__(self, num_envs=1, show_viewer=False):
         # RSL-RL required attributes
-        self.num_envs = n_envs
+        self.num_envs = num_envs 
         self.num_actions = 9
         self.max_episode_length = 500
         self.cfg = {} 
@@ -33,6 +32,8 @@ class FastFrankaEnv(VecEnv):
         self.robot = self.scene.add_entity(gs.morphs.MJCF(file='xml/franka_emika_panda/panda.xml', pos  =(1.0, 1.0, 0.0),))
         self.target = self.scene.add_entity(gs.morphs.URDF(file='assets/DarkCube/DarkCube.urdf', pos=(0.5, 0.5, 0.04)))      # OK (x, y, z) not 0
 
+        self.scene.build(n_envs=self.num_envs, env_spacing=(1.5, 1.5))
+        
         self.init_robot_pos = torch.zeros(self.robot.n_dofs, device=self.device)
         self.init_target_pos = torch.tensor([0.6, 0.6, 0.04], device=self.device)                                             # OK (x, y, z) not 0
         
@@ -51,6 +52,7 @@ class FastFrankaEnv(VecEnv):
         self.robot.set_dofs_kv(
             torch.tensor([450, 450, 350, 350, 200, 200, 200, 10, 10], device=self.device),
         )
+
         self.robot.set_dofs_force_range(
             torch.tensor([-87, -87, -87, -87, -12, -12, -12, -100, -100], device=self.device),
             torch.tensor([87, 87, 87, 87, 12, 12, 12, 100, 100], device=self.device),
