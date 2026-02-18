@@ -37,8 +37,6 @@ class FastFrankaEnv(VecEnv):
         self.init_robot_pos = torch.zeros(self.robot.n_dofs, device=self.device)
         self.init_target_pos = torch.tensor([0.6, 0.6, 0.04], device=self.device)                                             # OK (x, y, z) not 0
         
-        self.scene.build(n_envs=self.n_envs, env_spacing=(1.5, 1.5))
-        
         # Tracking buffers for RSL-RL logic
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         

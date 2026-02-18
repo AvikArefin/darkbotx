@@ -265,10 +265,6 @@ def rl_training():
 
     env = FastFrankaEnv(num_envs=n_envs, show_viewer=show_viewer)
     
-    # RSL-RL runner
-    runner = OnPolicyRunner(env, train_cfg, device=env.device)
-    runner.learn()
-
 def main():
     """Main function to train and evaluate the model."""
     
