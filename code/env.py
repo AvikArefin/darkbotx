@@ -7,23 +7,6 @@ from tensordict import TensorDict
 
 # Following the RSL RL API
 class FastFrankaEnv(VecEnv):
-    def _set_pd_gains(self):
-        # Set up PD gains for all joints
-        # kp: how hard it pulls toward the target (stiffness)
-        # kv: how much it resists motion (damping/viscosity)
-        self.robot.set_dofs_kp(
-            torch.tensor([4500, 4500, 3500, 3500, 2000, 2000, 2000, 100, 100], device=self.device),
-        )
-        
-        self.robot.set_dofs_kv(
-            torch.tensor([450, 450, 350, 350, 200, 200, 200, 10, 10], device=self.device),
-        )
-
-        self.robot.set_dofs_force_range(
-            torch.tensor([-87, -87, -87, -87, -12, -12, -12, -100, -100], device=self.device),
-            torch.tensor([87, 87, 87, 87, 12, 12, 12, 100, 100], device=self.device),
-        )
-
     def __init__(self, env_cfg: dict, reward_cfg: dict, robot_cfg: dict, show_viewer: bool = False):
         # RSL-RL required attributes
         self.show_viewer = show_viewer
@@ -120,6 +103,42 @@ class FastFrankaEnv(VecEnv):
 
         if True:
             self._set_pd_gains()
+            self.analyze_robot()
+
+
+    def analyze_robot(self):
+        """
+        Analyzes the robot's properties.
+        """
+        self.robot_mass = sum(link.inertial_mass for link in self.robot.links)
+        print(f"Calculated total robot mass: {self.robot_mass:.2f} kg")
+
+        print("\n--- Link Inertial Properties ---")
+        for link in self.robot.links:
+            print(f"\nLink: {link.name}")
+            print(f"  Mass: {link.inertial_mass}")
+            print(f"  Inertia tensor:\n{link.inertial_i}")
+            print(f"  COM position: {link.inertial_pos}")
+            print(f"  COM orientation (quat): {link.inertial_quat}")
+        print("---------------------------------\n")
+
+    def _set_pd_gains(self):
+        # Set up PD gains for all joints
+        # kp: how hard it pulls toward the target (stiffness)
+        # kv: how much it resists motion (damping/viscosity)
+
+        self.robot.set_dofs_kp(
+            torch.tensor([4500, 4500, 3500, 3500, 2000, 2000, 2000, 100, 100], device=self.device),
+        )
+
+        self.robot.set_dofs_kv(
+            torch.tensor([450, 450, 350, 350, 200, 200, 200, 10, 10], device=self.device),
+        )
+
+        self.robot.set_dofs_force_range(
+            torch.tensor([-87, -87, -87, -87, -12, -12, -12, -20, -20], device=self.device),
+            torch.tensor([87, 87, 87, 87, 12, 12, 12, 20, 20], device=self.device),
+        )
 
     def reset_at(self, env_ids):
         # robot
@@ -203,7 +222,7 @@ class FastFrankaEnv(VecEnv):
     def step(self, actions):
         # 1. Apply actions (Delta Control)
         current_dofs_pos = self.robot.get_dofs_position()
-        target_dofs_pos = current_dofs_pos + (actions * self.action_scales)
+        target_dofs_pos = self.dof_lower + actions * (self.dof_upper - self.dof_lower)
         target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
 
         self.robot.control_dofs_position(target_dofs_pos)
