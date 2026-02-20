@@ -144,6 +144,7 @@ env_cfg = {
     "is_debug": True,
     "logging_level": "info",
     "performance_mode": True,
+    "show_FPS": False,
 }
 
 reward_cfg = {

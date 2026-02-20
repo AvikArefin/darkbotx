@@ -63,7 +63,9 @@ class FastFrankaEnv(VecEnv):
                 camera_fov=30,
                 res=(512, 512),
             ),
-            profiling_options=gs.options.ProfilingOptions(show_FPS=True),
+            profiling_options=gs.options.ProfilingOptions(
+                show_FPS=env_cfg["show_FPS"]
+            ),
             renderer=scene_renderer,
             show_viewer=show_viewer,
         )
