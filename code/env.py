@@ -1,4 +1,5 @@
 import time
+import math
 import torch
 import genesis as gs
 from rsl_rl.env import VecEnv
@@ -6,40 +7,7 @@ from tensordict import TensorDict
 
 # Following the RSL RL API
 class FastFrankaEnv(VecEnv):
-    def __init__(self, num_envs=1, show_viewer=False):
-        # RSL-RL required attributes
-        self.num_envs = num_envs 
-        self.num_actions = 9
-        self.max_episode_length = 500
-        self.cfg = {} 
-        
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-        
-        gs.init(backend=gs.gpu if self.device.type != "cpu" else gs.cpu, performance_mode= not show_viewer, debug=True, logging_level="debug")
-        
-        self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(
-                dt=0.01,       # Simulation timestep (e.g., 100Hz)
-                substeps=10,    # Physics substeps per dt (increases stability)
-            ),
-            show_viewer=show_viewer,
-            viewer_options=gs.options.ViewerOptions(
-                camera_pos=(3.0, -3.0, 2.5), camera_lookat=(0, 0, 0.5), res=(512, 512)
-            )
-        )
-        
-        self.scene.add_entity(gs.morphs.Plane())
-        self.robot = self.scene.add_entity(gs.morphs.MJCF(file='xml/franka_emika_panda/panda.xml', pos  =(1.0, 1.0, 0.0),))
-        self.target = self.scene.add_entity(gs.morphs.URDF(file='assets/DarkCube/DarkCube.urdf', pos=(0.5, 0.5, 0.04)))      # OK (x, y, z) not 0
-
-        self.scene.build(n_envs=self.num_envs, env_spacing=(1.5, 1.5))
-        
-        self.init_robot_pos = torch.zeros(self.robot.n_dofs, device=self.device)
-        self.init_target_pos = torch.tensor([0.6, 0.6, 0.04], device=self.device)                                             # OK (x, y, z) not 0
-        
-        # Tracking buffers for RSL-RL logic
-        self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
-        
+    def _set_pd_gains(self):
         # Set up PD gains for all joints
         # kp: how hard it pulls toward the target (stiffness)
         # kv: how much it resists motion (damping/viscosity)
@@ -55,87 +23,222 @@ class FastFrankaEnv(VecEnv):
             torch.tensor([-87, -87, -87, -87, -12, -12, -12, -100, -100], device=self.device),
             torch.tensor([87, 87, 87, 87, 12, 12, 12, 100, 100], device=self.device),
         )
-        
-        self.action_scales = torch.tensor([0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05], device=self.device)
-        
-        
-    def get_observations(self) -> TensorDict:
-        obs = self.robot.get_dofs_position()
-        return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device)
 
-    def step(self, actions):
-        # 1. Apply actions and simulate
-        self.robot.control_dofs_position(actions * self.action_scales)
-        self.scene.step()
+    def __init__(self, env_cfg: dict, reward_cfg: dict, robot_cfg: dict, show_viewer: bool = False):
+        # RSL-RL required attributes
+        self.show_viewer = show_viewer
+        self.num_envs : int = env_cfg["num_envs"] 
+        self.num_actions : int = env_cfg["num_actions"]
+        self.num_obs : int = env_cfg["num_obs"]
+        self.num_privileged_obs = None
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+
+        self.ctrl_dt : float = env_cfg["ctrl_dt"]
+        self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
+
+        # configs
+        self.env_cfg : dict = env_cfg
+        self.reward_scales : dict = reward_cfg
+        self.action_scales : list = env_cfg["action_scales"]
+
+        # Tracking buffers for RSL-RL logic
+        self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         
-        obs = self.robot.get_dofs_position()
+        gs.init(
+            seed=None,
+            precision="32",
+            logging_level="debug",
+            debug=True,
+            performance_mode=True,
+            backend=gs.gpu if self.device.type != "cpu" else gs.cpu,
+        )
+
+        # === SETUP SCENE ===
+        scene_renderer = None
+        if self.device.type == "cuda" or self.device.type == "mps":
+            scene_renderer =gs.options.renderers.BatchRenderer(
+                use_rasterizer=env_cfg["use_rasterizer"],
+            )
+
+        self.scene = gs.Scene(
+            sim_options=gs.options.SimOptions(
+                dt=self.ctrl_dt,
+                substeps=10,
+            ),
+            rigid_options=gs.options.RigidOptions(
+                dt=self.ctrl_dt,
+                constraint_solver=gs.constraint_solver.Newton,
+                enable_collision=True,
+                enable_joint_limit=True,
+            ),
+            vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(min(self.num_envs, 10)))),
+            viewer_options=gs.options.ViewerOptions(
+                max_FPS=int(0.5 / self.ctrl_dt),
+                camera_pos=(3.5, 0.0, 2.5),
+                camera_lookat=(0.0, 0.0, 0.5),
+                camera_fov=30,
+                res=(512, 512),
+            ),
+            profiling_options=gs.options.ProfilingOptions(show_FPS=True),
+            renderer=scene_renderer,
+            show_viewer=show_viewer,
+        )
         
-        ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2 # OK       
-        target_pos = self.target.get_pos()                                                                          # OK
+        # === ADD ELEMENTS TO THE SCENE ===
+        self.scene.add_entity(gs.morphs.Plane())
+
+        # == robot ==
+        self.robot = self.scene.add_entity(
+            gs.morphs.MJCF(
+                file = 'xml/franka_emika_panda/panda.xml', 
+                pos = (0.0, 0.0, 0.0),
+            )
+        )
+        self.init_robot_pos = torch.tensor(robot_cfg["home_pos"], device=self.device)
         
-        # 3. Draw Debug Line (Target to End Effector)
-        # We clear previous lines to avoid a "trail" and draw a new one
-        # self.scene.clear_debug_objects()
+        # == target ==
+        self.target = self.scene.add_entity(
+            gs.morphs.URDF(
+                file='assets/DarkCube/DarkCube.urdf', 
+                pos=(0.5, 0.5, 0.04)
+            )
+        )
+        self.init_target_pos = torch.tensor([0.6, 0.6, 0.04], device=self.device)
+
+        # build scene
+        self.env_spacing = 1.5
+        self.scene.build(
+            n_envs=self.num_envs, 
+            env_spacing=(self.env_spacing, self.env_spacing)
+        )
+
+        lower, upper = self.robot.get_dofs_limit()
+        self.dof_lower = lower.to(self.device)
+        self.dof_upper = upper.to(self.device)
+
+        if True:
+            self._set_pd_gains()
+
+    def reset_at(self, env_ids):
+        # robot
+        self.robot.set_dofs_position(self.init_robot_pos, envs_idx=env_ids)
+        self.robot.set_dofs_velocity(torch.zeros_like(self.init_robot_pos), envs_idx=env_ids)
+
+        # target
+        self.target.set_pos(self.init_target_pos, envs_idx=env_ids)
+
+    def get_observations(self) -> TensorDict:
+        """Fetches the current state of the robot and target."""
+        dofs_pos = self.robot.get_dofs_position()
+        target_pos = self.target.get_pos()
         
-        # for i in range(self.num_envs):
-        #     self.scene.draw_debug_line(
-        #         start=target_pos[i], 
-        #         # start=torch.tensor([0, 0, 0]),
-        #         end=ee_pos[i],
-        #         radius=0.005,
-        #         color=(0, 1, 0),
-        #     )
+        # Combine robot state + target state
+        obs = torch.cat([dofs_pos, target_pos], dim=-1)
         
-        # 1. Distance from robot gripper to target (Goal)
+        return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device) 
+
+    def _compute_reward(self):
+        """Calculates rewards and termination conditions."""
+        ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
+        target_pos = self.target.get_pos()
+        
+        # Distance from robot gripper to target
         dist = torch.norm(ee_pos - target_pos, dim=-1)
         
-        # 2. Calculate Horizontal (XY) displacement from initial position
-        # We slice [:, :2] to get only X and Y coordinates
+        # Horizontal (XY) displacement of target
         target_xy_dist = torch.norm(target_pos[:, :2] - self.init_target_pos[:2], dim=-1)
         
-        # 3. Check if target is "on the ground" (e.g., z < 3cm)
+        # Check for sliding (moved > 5cm horizontally while on the ground)
         is_on_ground = target_pos[:, 2] < 0.03
-        
-        # 4. Define Penalty Condition:
-        # It is "sliding" if it moved horizontally > 5cm WHILE sitting on/near the ground
         is_sliding = (target_xy_dist > 0.05) & is_on_ground
         
-        # 5. Rewards & Dones
-        # Penalty is applied if sliding. 
-        # Note: We replaced the old 'is_thrown' logic with this specific sliding check.
+        # Calculate Rewards
         rewards = -dist - (is_sliding.float() * 10.0) 
         
-        # Terminate if task is solved (close to gripper) or if constraint violated (sliding)
+        # Calculate Task Terminations
         termination_dones = (dist < 0.05) | is_sliding
         
-        # 3. Handle Timeouts (Truncation)
+        return rewards, termination_dones
+
+    def _debug_vis(self) -> None:
+        ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
+        target_pos = self.target.get_pos()
+        
+        self.scene.clear_debug_objects()
+        num_rendered = min(self.num_envs, 10) 
+        
+        # --- Simplified Grid Math ---
+        # Assuming self.env_spacing is a tuple like (5.0, 5.0), we just take the first value
+        spacing = self.env_spacing[0] if isinstance(self.env_spacing, tuple) else self.env_spacing
+        
+        n_cols = math.ceil(math.sqrt(self.num_envs))
+        n_rows = math.ceil(self.num_envs / n_cols)
+        
+        # Calculate the "center index" (how many rows/cols to shift back)
+        center_x_idx = (n_rows - 1) / 2.0
+        center_y_idx = (n_cols - 1) / 2.0
+
+        for i in range(num_rendered):
+            row = i // n_cols
+            col = i % n_cols
+            
+            # Clean, single-multiplier offset calculation
+            visual_offset = torch.tensor([
+                (row - center_x_idx) * spacing, 
+                (col - center_y_idx) * spacing, 
+                0.0
+            ], device=self.device)
+            
+            global_start = target_pos[i] + visual_offset
+            global_end = ee_pos[i] + visual_offset
+
+            self.scene.draw_debug_line(
+                start=global_start, 
+                end=global_end,
+                color=(0, 1, 0),
+            )       
+
+    def step(self, actions):
+        # 1. Apply actions (Delta Control)
+        current_dofs_pos = self.robot.get_dofs_position()
+        target_dofs_pos = current_dofs_pos + (actions * self.action_scales)
+        target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
+
+        self.robot.control_dofs_position(target_dofs_pos)
+        self.scene.step()
+
+        # 2. Debug Visualization (Optional)
+        if self.show_viewer:
+            self._debug_vis()
+
+        # Compute Rewards and Dones
+        rewards, termination_dones = self._compute_reward()
+        
+        # Handle Timeouts & Total Dones
         self.episode_length_buf += 1
         time_outs = self.episode_length_buf >= self.max_episode_length
-        
-        # 4. Combined Dones for the solver
         total_dones = termination_dones | time_outs
         
-        # 5. Automatic Resets (Crucial for vectorized training)
+        # Automatic Resets
         if total_dones.any():
             env_ids = total_dones.nonzero(as_tuple=False).flatten()
             self.reset_at(env_ids)
             self.episode_length_buf[env_ids] = 0
-            # Refresh observations after resets
-            obs = self.robot.get_dofs_position()
         
-        # 6. Package for RSL-RL
-        obs_td = TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device)
-        infos = {"time_outs": time_outs}
-        
-        return obs_td, rewards * 0.01, total_dones, infos
+        # Fetch Final Observations
+        obs = self.get_observations()
 
-    def reset_at(self, env_ids):
-        self.robot.set_dofs_position(self.init_robot_pos, envs_idx=env_ids)
-        self.robot.set_dofs_velocity(torch.zeros_like(self.init_robot_pos), envs_idx=env_ids)
-        self.target.set_pos(self.init_target_pos, envs_idx=env_ids)
+        infos = {
+            "time_outs": time_outs
+        }
+        
+        return obs, rewards, total_dones, infos 
 
     def reset(self):
-        self.scene.reset()
+        # Reset all environments
+        self.reset_at(torch.arange(self.num_envs, device=self.device))
         self.episode_length_buf.zero_()
-        obs = self.robot.get_dofs_position()
-        return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device), {}
+        
+        # Return initial observations
+        return self.get_observations(), {} 

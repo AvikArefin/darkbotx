@@ -61,6 +61,8 @@ def get_args():
 args = get_args()
 
 # configuration
+device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+
 train_cfg = {
     "class_name": "OnPolicyRunner",
     # General
@@ -131,7 +133,55 @@ train_cfg = {
     },
 }
 
+env_cfg = {
+    "num_envs": 1,
+    "num_obs": 14,
+    "num_actions": 9,
+    "action_scales": torch.tensor([1.0] * 9, device=device),
+    "episode_length_s": 30.0,
+    "ctrl_dt": 0.01,
+    "use_rasterizer": True,
+}
+
+reward_cfg = {
+    "keypoints": 1.0,
+}
+
+robot_cfg = {
+    "ee_link_name": "hand",
+    "gripper_link_names": ["left_finger", "right_finger"],
+    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
+    "ik_method": "dls_ik",
+}
+
 # --- TRAINING: functions and classes ---
+def run_random_simulation():
+    """Runs the simulation with the given model."""
+    show_viewer = True
+
+    env = FastFrankaEnv(
+        env_cfg=env_cfg,
+        reward_cfg=reward_cfg,
+        robot_cfg=robot_cfg,
+        show_viewer=show_viewer
+    )
+
+    env.reset()
+    try:
+        while True:
+            random_actions = 2.0 * torch.rand((env_cfg["num_envs"], env_cfg["num_actions"]), device=env.device) - 1.0
+            obs, rewards, dones, infos = env.step(random_actions)
+
+            logger.debug(f"infos = {infos}")
+            logger.debug(f"rewards = {rewards}")
+
+    except KeyboardInterrupt:
+        logger.info("Simulation interrupted by user.")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+    finally:
+        pass
+
 def run_simulation(model, id: str, episodes: int = 3):
     """Runs the simulation with the given model."""
 
@@ -260,10 +310,9 @@ def run_manual_simulation(id: str):
 
 def rl_training():
     # For training, episodes are not explicitly defined since we train for a total number of timesteps.
-    n_envs = 4
     show_viewer = True
 
-    env = FastFrankaEnv(num_envs=n_envs, show_viewer=show_viewer)
+    env = FastFrankaEnv(env_cfg=env_cfg, reward_cfg=reward_cfg, robot_cfg=robot_cfg, show_viewer=show_viewer)
     
 def main():
     """Main function to train and evaluate the model."""
@@ -272,7 +321,7 @@ def main():
     try:
         if args.random:
             logger.info("--- GUI: RANDOM ACTION SIMULATION ---")
-            # run_simulation(model=None, id=ID, episodes=args.random)
+            run_random_simulation()
             logger.info("FINISHED. Running simulation with random actions.")
         if args.manual:
             logger.info("--- GUI: MANUAL SIMULATION ---")
