@@ -158,22 +158,22 @@ robot_cfg = {
 }
 
 # --- TRAINING: functions and classes ---
-def run_random_simulation():
+def run_random_simulation(debug: bool = False):
     """
-    Runs the simulation with random actions using the Monitor for visualization.
-    Extracts telemetry directly from the 'infos' dictionary.
+    Runs the simulation with random actions.
+    If debug is True, visualizes it using the Monitor and extracts telemetry.
     """
     # 1. Setup Environment
-    # show_viewer=True is required for the Monitor to be useful
+    # show_viewer is tied to the debug flag
     env = FastFrankaEnv(
         env_cfg=env_cfg,
         reward_cfg=reward_cfg,
         robot_cfg=robot_cfg,
-        show_viewer=True
+        show_viewer=debug
     )
 
-    # 2. Setup GUI Monitor
-    monitor = Monitor(sys.argv, num_envs=env.num_envs)
+    # 2. Setup GUI Monitor conditionally
+    monitor = Monitor(sys.argv, num_envs=env.num_envs) if debug else None
     
     env.reset()
     
@@ -181,11 +181,16 @@ def run_random_simulation():
     total_rewards = [0.0] * env.num_envs
 
     try:
-        logger.info("--- GUI: RANDOM ACTION SIMULATION STARTED ---")
+        if debug:
+            logger.info("--- GUI: RANDOM ACTION SIMULATION STARTED ---")
+        else:
+            logger.info("--- HEADLESS: RANDOM ACTION SIMULATION STARTED ---")
         
-        # 3. Linear Simulation Loop (No nested function)
-        # We loop as long as the Monitor window is open
-        while monitor.window.isVisible():
+        # 3. Linear Simulation Loop
+        while True:
+            # If in debug mode, break the loop if the user closes the Monitor window
+            if debug and not monitor.window.isVisible():
+                break
             
             # A. Generate Random Actions
             # Shape: (num_envs, 9) in range [0.0, 1.0] for absolute control
@@ -194,40 +199,42 @@ def run_random_simulation():
             # B. Step Environment
             obs, rewards, dones, infos = env.step(random_actions)
             
-            # Extract telemetry directly from infos
-            dofs_pos = infos.get("dofs_pos")
-            target_pos = infos.get("target_pos")
-            dist = infos.get("dist")
+            # C. Monitor Updates (Only if debug is enabled)
+            if debug:
+                # Extract telemetry directly from infos
+                dofs_pos = infos.get("dofs_pos")
+                target_pos = infos.get("target_pos")
+                dist = infos.get("dist")
 
-            # C. Update Monitor (Iterate over all environment panels)
-            for i in range(env.num_envs):
-                panel = monitor.env_panels[i]
+                # Update Monitor (Iterate over all environment panels)
+                for i in range(env.num_envs):
+                    panel = monitor.env_panels[i]
 
-                # 1. Update Reward Plot
-                total_rewards[i] += rewards[i].item()
-                panel.update_plot(total_rewards[i])
+                    # 1. Update Reward Plot
+                    total_rewards[i] += rewards[i].item()
+                    panel.update_plot(total_rewards[i])
 
-                # 2. Update Sliders
-                if dofs_pos is not None:
-                    # Pass the exact physics joint angles to the sliders
-                    panel.update_joints(dofs_pos[i].tolist())
+                    # 2. Update Sliders
+                    if dofs_pos is not None:
+                        # Pass the exact physics joint angles to the sliders
+                        panel.update_joints(dofs_pos[i].tolist())
 
-                # 3. Update Cube Label
-                if target_pos is not None:
-                    # Format the tensor into a clean X, Y, Z string
-                    target_p = target_pos[i]
-                    d = dist[i]
+                    # 3. Update Cube Label
+                    if target_pos is not None and dist is not None:
+                        # Convert to standard python types to avoid tensor format errors
+                        target_p = target_pos[i].tolist()
+                        d = dist[i].item()
 
-                    cube_text = f"XYZ: [{target_p[0]:.2f}, {target_p[1]:.2f}, {target_p[2]:.2f}]\ndist: {d:.4f}"
-                    panel.set_cube_label(cube_text)
+                        cube_text = f"XYZ: [{target_p[0]:.2f}, {target_p[1]:.2f}, {target_p[2]:.2f}]\ndist: {d:.4f}"
+                        panel.set_cube_label(cube_text)
 
-                # 4. Handle Episode Completion (Reset Plot)
-                if dones[i]:
-                    total_rewards[i] = 0.0
-                    panel.reset_plot()
-            
-            # D. Process GUI Events (Keep window responsive)
-            monitor.update_gui()
+                    # 4. Handle Episode Completion (Reset Plot)
+                    if dones[i]:
+                        total_rewards[i] = 0.0
+                        panel.reset_plot()
+                
+                # D. Process GUI Events (Keep window responsive)
+                monitor.update_gui()
 
     except KeyboardInterrupt:
         logger.info("Simulation interrupted by user.")
@@ -235,7 +242,8 @@ def run_random_simulation():
         logger.error(f"Error in random simulation: {e}")
     finally:
         # Cleanup
-        monitor.close()
+        if debug and monitor:
+            monitor.close()
         logger.info("Random Simulation Ended.")
 
 def run_manual_simulation():
@@ -246,6 +254,7 @@ def run_manual_simulation():
     # 1. Setup Environment
     # You can change num_envs in env_cfg to test the monitor's grid layout
     manual_env_cfg = env_cfg.copy()
+    manual_env_cfg["episode_length_s"] = 999999.0
     
     # Initialize Genesis Environment
     env = FastFrankaEnv(
@@ -369,7 +378,7 @@ def main():
     try:
         if args.random:
             logger.info("--- GUI: RANDOM ACTION SIMULATION ---")
-            run_random_simulation()
+            run_random_simulation(debug=args.monitor)
             logger.info("FINISHED. Running simulation with random actions.")
         if args.manual:
             logger.info("--- GUI: MANUAL SIMULATION ---")
