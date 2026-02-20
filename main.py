@@ -154,7 +154,7 @@ reward_cfg = {
 robot_cfg = {
     "ee_link_name": "hand",
     "gripper_link_names": ["left_finger", "right_finger"],
-    "home_pos": torch.tensor([2., -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04], device=device),
+    "home_pos": torch.tensor([0.741, 0.63, 0.023, -1.95, 0.26, 2.38, 1.21, 0.41, 0.41], device=device),
     "ik_method": "dls_ik",
 }
 
