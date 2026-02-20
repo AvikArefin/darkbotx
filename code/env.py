@@ -55,11 +55,12 @@ class FastFrankaEnv(VecEnv):
         )
 
         # === SETUP SCENE ===
-        scene_renderer = None
-        if self.device.type == "cuda" or self.device.type == "mps":
-            scene_renderer =gs.options.renderers.BatchRenderer(
+        if self.device.type == "cuda":
+            scene_renderer = gs.options.renderers.BatchRenderer(
                 use_rasterizer=env_cfg["use_rasterizer"],
             )
+        else:
+            scene_renderer = gs.renderers.Rasterizer()
 
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
