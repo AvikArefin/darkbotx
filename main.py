@@ -153,7 +153,7 @@ reward_cfg = {
 robot_cfg = {
     "ee_link_name": "hand",
     "gripper_link_names": ["left_finger", "right_finger"],
-    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
+    "home_pos": torch.tensor([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04], device=device),
     "ik_method": "dls_ik",
 }
 
@@ -267,7 +267,9 @@ def run_manual_simulation():
     env.reset()
     
     # --- INFO: Initialize Sliders to Safe Defaults ---
-    home_pos_action = [0.5000, 0.2773, 0.5000, 0.2384, 0.5000, 0.4214, 0.6355, 1.0000, 1.0000]
+    robot_lower = torch.tensor([-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973,  0.0000, 0.0000], device=env.device)
+    robot_upper = torch.tensor([ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973,  0.0400, 0.0400], device=env.device)
+    home_pos_action = (robot_cfg["home_pos"] - robot_lower) / (robot_upper - robot_lower)
     
     # Apply defaults to all sliders in all panels
     for panel in monitor.env_panels:
@@ -283,7 +285,7 @@ def run_manual_simulation():
         nonlocal total_rewards
         
         # A. Create Action Tensor
-        action = torch.tensor(home_pos_action, device=env.device).repeat(env.num_envs, 1)
+        action = home_pos_action.clone().detach().to(env.device).repeat(env.num_envs, 1)
         
         for env_idx in range(env.num_envs):
             panel = monitor.env_panels[env_idx]
