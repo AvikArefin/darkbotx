@@ -78,7 +78,7 @@ class FastFrankaEnv(VecEnv):
                 pos = (0.0, 0.0, 0.0),
             )
         )
-        self.init_robot_pos = torch.tensor(robot_cfg["home_pos"], device=self.device)
+        self.init_robot_pos = robot_cfg["home_pos"]
         
         # == target ==
         self.target = self.scene.add_entity(

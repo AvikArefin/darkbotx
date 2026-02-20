@@ -266,17 +266,15 @@ def run_manual_simulation():
     monitor = Monitor(sys.argv, num_envs=env.num_envs)
     env.reset()
     
-    # --- INFO: Initialize Sliders to Safe Defaults ---
-    robot_lower = torch.tensor([-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973,  0.0000, 0.0000], device=env.device)
-    robot_upper = torch.tensor([ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973,  0.0400, 0.0400], device=env.device)
-    home_pos_action = (robot_cfg["home_pos"] - robot_lower) / (robot_upper - robot_lower)
+    home_pos = robot_cfg["home_pos"]
     
-    # Apply defaults to all sliders in all panels
+    # Apply physical defaults to all sliders in all panels
     for panel in monitor.env_panels:
-        for i, val in enumerate(home_pos_action):
+        for i, phys_val in enumerate(home_pos):
             if i < len(panel.joints_var):
-                # .set() updates the slider position and the text label
-                panel.joints_var[i].set(val)
+                # .set() expects the actual physical joint angle, NOT the 0.0-1.0 mapped action!
+                # It safely handles mapping to the 0-1000 slider range internally.
+                panel.joints_var[i].set(phys_val)
 
     # Trackers
     total_rewards = [0.0] * env.num_envs
@@ -284,8 +282,9 @@ def run_manual_simulation():
     def physics_loop():       
         nonlocal total_rewards
         
-        # A. Create Action Tensor
-        action = home_pos_action.clone().detach().to(env.device).repeat(env.num_envs, 1)
+        # A. Create Empty Action Tensor 
+        # (It gets filled instantly by reading the sliders below, so zeros are fine here)
+        action = torch.zeros((env.num_envs, env.num_actions), device=env.device)
         
         for env_idx in range(env.num_envs):
             panel = monitor.env_panels[env_idx]
@@ -300,8 +299,9 @@ def run_manual_simulation():
                     normalized_val = val / 1000.0
                     action[env_idx, i] = normalized_val
                     
-                    # Update Label with target value
-                    slider.label.setText(f"{slider.name}: {normalized_val:.4f}")
+                    # Update Label with target physical value
+                    phys_val = slider.min_val + (normalized_val * slider.range_span)
+                    slider.label.setText(f"{slider.name}: {phys_val:.4f}")
 
             # 2. Read Gripper (Index 7)
             if len(panel.joints_var) > 7:
@@ -313,12 +313,14 @@ def run_manual_simulation():
                 action[env_idx, 7] = g_norm 
                 action[env_idx, 8] = g_norm
                 
-                gripper_slider.label.setText(f"{gripper_slider.name}: {g_norm:.4f}")
+                # Update Label with target physical gripper value
+                phys_g = gripper_slider.min_val + (g_norm * gripper_slider.range_span)
+                gripper_slider.label.setText(f"{gripper_slider.name}: {phys_g:.4f}")
                 
                 # Visually sync the 2nd finger slider (Index 8) if it exists
                 if len(panel.joints_var) > 8:
                     panel.joints_var[8].slider.setValue(g_val)
-                    panel.joints_var[8].label.setText(f"{panel.joints_var[8].name}: {g_norm:.4f}")
+                    panel.joints_var[8].label.setText(f"{panel.joints_var[8].name}: {phys_g:.4f}")
 
         # B. Step Physics
         obs, rewards, dones, infos = env.step(action)
@@ -334,9 +336,6 @@ def run_manual_simulation():
             # 1. Update Reward Plot
             total_rewards[i] += rewards[i].item()
             panel.update_plot(total_rewards[i])
-
-            # NOTE: Removed panel.update_joints(dofs_pos) here!
-            # If we update the sliders with physical pos, the user can't drag them!
 
             # 2. Update Cube Label
             if target_pos is not None and dist is not None:
