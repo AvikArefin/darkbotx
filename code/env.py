@@ -31,9 +31,9 @@ class FastFrankaEnv(VecEnv):
         gs.init(
             seed=None,
             precision="32",
-            logging_level="debug",
-            debug=True,
-            performance_mode=True,
+            logging_level=env_cfg["logging_level"],
+            debug=env_cfg["is_debug"],
+            performance_mode=env_cfg["performance_mode"],
             backend=gs.gpu if self.device.type != "cpu" else gs.cpu,
         )
 
@@ -104,7 +104,6 @@ class FastFrankaEnv(VecEnv):
         if True:
             self._set_pd_gains()
             self.analyze_robot()
-
 
     def analyze_robot(self):
         """
@@ -249,9 +248,22 @@ class FastFrankaEnv(VecEnv):
         # Fetch Final Observations
         obs = self.get_observations()
 
-        infos = {
-            "time_outs": time_outs
-        }
+        if self.show_viewer:
+            dofs_pos = self.robot.get_dofs_position()
+            target_pos = self.target.get_pos()
+            ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
+            dist = torch.norm(ee_pos - target_pos, dim=-1)
+
+            infos = {
+                "time_outs": time_outs,
+                "dofs_pos": dofs_pos,
+                "target_pos": target_pos,
+                "dist": dist,
+            }
+        else:
+            infos = {
+                "time_outs": time_outs
+            }
         
         return obs, rewards, total_dones, infos 
 

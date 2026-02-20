@@ -138,9 +138,12 @@ env_cfg = {
     "num_obs": 14,
     "num_actions": 9,
     "action_scales": torch.tensor([1.0] * 9, device=device),
-    "episode_length_s": 30.0,
+    "episode_length_s": 1.0,
     "ctrl_dt": 0.01,
     "use_rasterizer": True,
+    "is_debug": True,
+    "logging_level": "info",
+    "performance_mode": True,
 }
 
 reward_cfg = {
@@ -156,91 +159,93 @@ robot_cfg = {
 
 # --- TRAINING: functions and classes ---
 def run_random_simulation():
-    """Runs the simulation with the given model."""
-    show_viewer = True
-
+    """
+    Runs the simulation with random actions using the Monitor for visualization.
+    Extracts telemetry directly from the 'infos' dictionary.
+    """
+    # 1. Setup Environment
+    # show_viewer=True is required for the Monitor to be useful
     env = FastFrankaEnv(
         env_cfg=env_cfg,
         reward_cfg=reward_cfg,
         robot_cfg=robot_cfg,
-        show_viewer=show_viewer
+        show_viewer=True
     )
 
+    # 2. Setup GUI Monitor
+    monitor = Monitor(sys.argv, num_envs=env.num_envs)
+    
     env.reset()
-    try:
-        while True:
-            random_actions = 2.0 * torch.rand((env_cfg["num_envs"], env_cfg["num_actions"]), device=env.device) - 1.0
-            obs, rewards, dones, infos = env.step(random_actions)
+    
+    # Trackers for rewards
+    total_rewards = [0.0] * env.num_envs
 
-            logger.debug(f"infos = {infos}")
-            logger.debug(f"rewards = {rewards}")
+    try:
+        logger.info("--- GUI: RANDOM ACTION SIMULATION STARTED ---")
+        
+        # 3. Linear Simulation Loop (No nested function)
+        # We loop as long as the Monitor window is open
+        while monitor.window.isVisible():
+            
+            # A. Generate Random Actions
+            # Shape: (num_envs, 9) in range [0.0, 1.0] for absolute control
+            random_actions = torch.rand((env.num_envs, env.num_actions), device=env.device)
+            
+            # B. Step Environment
+            obs, rewards, dones, infos = env.step(random_actions)
+            
+            # Extract telemetry directly from infos
+            dofs_pos = infos.get("dofs_pos")
+            target_pos = infos.get("target_pos")
+            dist = infos.get("dist")
+
+            # C. Update Monitor (Iterate over all environment panels)
+            for i in range(env.num_envs):
+                panel = monitor.env_panels[i]
+
+                # 1. Update Reward Plot
+                total_rewards[i] += rewards[i].item()
+                panel.update_plot(total_rewards[i])
+
+                # 2. Update Sliders
+                if dofs_pos is not None:
+                    # Pass the exact physics joint angles to the sliders
+                    panel.update_joints(dofs_pos[i].tolist())
+
+                # 3. Update Cube Label
+                if target_pos is not None:
+                    # Format the tensor into a clean X, Y, Z string
+                    target_p = target_pos[i]
+                    d = dist[i]
+
+                    cube_text = f"XYZ: [{target_p[0]:.2f}, {target_p[1]:.2f}, {target_p[2]:.2f}]\ndist: {d:.4f}"
+                    panel.set_cube_label(cube_text)
+
+                # 4. Handle Episode Completion (Reset Plot)
+                if dones[i]:
+                    total_rewards[i] = 0.0
+                    panel.reset_plot()
+            
+            # D. Process GUI Events (Keep window responsive)
+            monitor.update_gui()
 
     except KeyboardInterrupt:
         logger.info("Simulation interrupted by user.")
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"Error in random simulation: {e}")
     finally:
-        pass
-
-def run_simulation(model, id: str, episodes: int = 3):
-    """Runs the simulation with the given model."""
-
-    monitor : Monitor = Monitor(sys.argv)
-
-    # Create a single environment with rendering enabled.
-    env = gym.make(id, render_mode="human", control_mode=args.control_mode)
-    
-    if model is None:
-        logger.info("No model provided, using random actions.")
-        model = RandomPolicy(env.action_space)
-    
-    try:
-        for episode in range(episodes):
-            logger.info(f"--- Starting Episode {episode + 1} ---")
-
-            # GUI: update episode
-            monitor.set_episode(episode + 1)
-            monitor.reset_plot()
-
-            obs, _ = env.reset()
-            terminated = False
-            truncated = False
-            
-            step_counter = 0
-            total_reward = 0
-            while not terminated and not truncated:
-                step_counter += 1
-
-                # logger.info(f"{10*'-'} STEP_{step_counter} {10*'-'}")
-                action, _states = model.predict(obs, deterministic=True)
-
-                obs, reward, terminated, truncated, info = env.step(action)
-
-                total_reward += float(reward)
-
-                # GUI: update debug monitor
-                monitor.set_cube_label(info["cube_info"])
-
-                monitor.update_plot(total_reward)
-                monitor.update_joints(info)
-                monitor.update_gui()
-
-        exit_code = monitor.exec()
-        logger.info(f"Monitor close with exit code: {exit_code}")
-    except KeyboardInterrupt:
-        logger.info("Simulation interrupted by user.")
-    finally:
-        env.close()
+        # Cleanup
+        monitor.close()
+        logger.info("Random Simulation Ended.")
 
 def run_manual_simulation():
     """
-    Runs the simulation in manual control mode using the Custom Monitor GUI.
+    Runs the simulation in manual control mode using the Custom Monitor GUI
+    with multi-environment support.
     """
     # 1. Setup Environment
-    # Force 1 environment for manual control
+    # You can change num_envs in env_cfg to test the monitor's grid layout
     manual_env_cfg = env_cfg.copy()
-    manual_env_cfg["num_envs"] = 1
-    manual_env_cfg["episode_length_s"] = 9999999.0
     
     # Initialize Genesis Environment
     env = FastFrankaEnv(
@@ -251,75 +256,87 @@ def run_manual_simulation():
     )
     
     # 2. Setup GUI Monitor
-    monitor : Monitor = Monitor(sys.argv)
+    monitor : Monitor = Monitor(sys.argv, num_envs=env.num_envs)
     env.reset()
     
-    total_reward: float = 0.
-    step_count: int = 0
+    # Track total rewards per environment
+    total_rewards = [0.0 for _ in range(env.num_envs)]
+    step_count = 0
 
     def physics_loop():       
-        nonlocal step_count, total_reward
+        nonlocal step_count, total_rewards
         
         # A. Read Sliders -> Action Vector
-        # Shape: (1, 9) -> [Batch, Actions]
-        # We use [0, 1] range because your env.py uses absolute control:
-        # target = lower + action * (upper - lower)
-        action = torch.zeros((1, 9), device=env.device)
+        # Shape: (num_envs, 9) -> [Batch, Actions]
+        # We use [0, 1] range because env.py uses absolute control: target = lower + action * (upper - lower)
+        action = torch.zeros((env.num_envs, env.num_actions), device=env.device)
         
-        # 1. Map Arm Sliders (indices 0-6)
-        for i in range(7):
-            if i < len(monitor.joints_var):
-                slider = monitor.joints_var[i]
-                val = slider.slider.value() # 0 to 1000
+        for env_idx in range(env.num_envs):
+            panel = monitor.env_panels[env_idx]
+            
+            # 1. Map Arm Sliders (indices 0-6)
+            for i in range(7):
+                if i < len(panel.joints_var):
+                    slider = panel.joints_var[i]
+                    val = slider.slider.value() # 0 to 1000
+                    
+                    # Map 0..1000 -> 0.0..1.0
+                    normalized_val = val / 1000.0
+                    action[env_idx, i] = normalized_val
+                    
+                    # Update Label (Approximate visual feedback)
+                    slider.label.setText(f"{slider.name}: {normalized_val:.2f}")
+
+            # 2. Map Gripper (Index 7 Control -> Action 7 & 8)
+            if len(panel.joints_var) > 7:
+                gripper_slider = panel.joints_var[7]
+                g_val = gripper_slider.slider.value() # 0 to 1000
                 
                 # Map 0..1000 -> 0.0..1.0
-                normalized_val = val / 1000.0
-                action[0, i] = normalized_val
+                g_norm = g_val / 1000.0
                 
-                # Update Label (Approximate visual feedback)
-                slider.label.setText(f"{slider.name}: {normalized_val:.2f}")
-
-        # 2. Map Gripper (Index 7 Control -> Action 7 & 8)
-        if len(monitor.joints_var) > 7:
-            gripper_slider = monitor.joints_var[7]
-            g_val = gripper_slider.slider.value() # 0 to 1000
-            
-            # Map 0..1000 -> 0.0..1.0
-            g_norm = g_val / 1000.0
-            
-            action[0, 7] = g_norm # Left Finger
-            action[0, 8] = g_norm # Right Finger
-            
-            gripper_slider.label.setText(f"{gripper_slider.name}: {g_norm:.2f}")
-            
-            # Update the 2nd gripper slider visually if it exists
-            if len(monitor.joints_var) > 8:
-                monitor.joints_var[8].slider.setValue(g_val)
-                monitor.joints_var[8].label.setText(f"{monitor.joints_var[8].name}: {g_norm:.2f}")
+                action[env_idx, 7] = g_norm # Left Finger
+                action[env_idx, 8] = g_norm # Right Finger
+                
+                gripper_slider.label.setText(f"{gripper_slider.name}: {g_norm:.2f}")
+                
+                # Update the 2nd gripper slider visually if it exists
+                if len(panel.joints_var) > 8:
+                    panel.joints_var[8].slider.setValue(g_val)
+                    panel.joints_var[8].label.setText(f"{panel.joints_var[8].name}: {g_norm:.2f}")
 
         # B. Step Physics
         # FastFrankaEnv returns: (obs, rewards, dones, infos)
-        obs, reward, done, info = env.step(action)
+        obs, rewards, dones, infos = env.step(action)
         
         step_count += 1
         
-        # Take the scalar reward from the (1,) tensor
-        current_reward = reward.item()
-        total_reward += current_reward
-
         # C. Update Telemetry
-        monitor.update_plot(total_reward)
-        
-        # Optional: Update Cube Label if info is available
-        if "cube_info" in info:
-            monitor.set_cube_label(info["cube_info"])
+        for env_idx in range(env.num_envs):
+            panel = monitor.env_panels[env_idx]
+            
+            # Accumulate reward for this specific env
+            current_reward = rewards[env_idx].item()
+            total_rewards[env_idx] += current_reward
+            
+            panel.update_plot(total_rewards[env_idx])
+            
+            # Optional: Update Cube Label if info is available
+            if "cube_info" in infos:
+                # Depending on how info is structured, it might be a list or scalar
+                cube_text = infos["cube_info"][env_idx] if isinstance(infos["cube_info"], list) else infos["cube_info"]
+                panel.set_cube_label(cube_text)
 
         # D. Auto-Reset Handling
-        # Genesis auto-resets in step(), so we just handle the GUI side here
-        if done.any():
-            # Optional: Reset plot on new episode
-            # monitor.reset_plot()
-            pass
+        # Genesis auto-resets in step(), so we just handle the GUI plot resets here
+        if dones.any():
+            reset_envs = dones.nonzero(as_tuple=False).flatten()
+            for env_idx in reset_envs:
+                # Convert tensor index to int
+                idx = env_idx.item()
+                # Reset the accumulated reward and clear the plot for this specific env
+                total_rewards[idx] = 0.0
+                monitor.env_panels[idx].reset_plot()
 
     # 3. Start the GUI Event Loop
     try:
@@ -338,7 +355,12 @@ def rl_training():
     # For training, episodes are not explicitly defined since we train for a total number of timesteps.
     show_viewer = True
 
-    env = FastFrankaEnv(env_cfg=env_cfg, reward_cfg=reward_cfg, robot_cfg=robot_cfg, show_viewer=show_viewer)
+    env = FastFrankaEnv(
+        env_cfg=env_cfg, 
+        reward_cfg=reward_cfg, 
+        robot_cfg=robot_cfg, 
+        show_viewer=show_viewer
+    )
     
 def main():
     """Main function to train and evaluate the model."""
