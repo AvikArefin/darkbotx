@@ -74,13 +74,14 @@ class FastFrankaEnv(VecEnv):
         self.scene.add_entity(gs.morphs.Plane())
 
         # == robot ==
-        self.robot = self.scene.add_entity(
+        self.robot: gs.engine.entities.rigid_entity.rigid_entity.RigidEntity = self.scene.add_entity(
             gs.morphs.MJCF(
                 file = 'xml/franka_emika_panda/panda.xml', 
                 pos = (0.0, 0.0, 0.0),
             )
         )
         self.init_robot_pos = robot_cfg["home_pos"]
+        print(f"Robot Type: {type(self.robot)}")
         
         # == target ==
         self.target = self.scene.add_entity(
@@ -141,6 +142,7 @@ class FastFrankaEnv(VecEnv):
         )
 
     def reset_at(self, env_ids):
+        print(f"RESET AT: {env_ids}")
         # robot
         self.robot.set_dofs_position(self.init_robot_pos, envs_idx=env_ids)
         self.robot.set_dofs_velocity(torch.zeros_like(self.init_robot_pos), envs_idx=env_ids)
@@ -169,15 +171,17 @@ class FastFrankaEnv(VecEnv):
         # Horizontal (XY) displacement of target
         target_xy_dist = torch.norm(target_pos[:, :2] - self.init_target_pos[:2], dim=-1)
         
-        # Check for sliding (moved > 5cm horizontally while on the ground)
-        is_on_ground = target_pos[:, 2] < 0.03
-        is_sliding = (target_xy_dist > 0.05) & is_on_ground
+        # When sliding, in most cases, it does not stay on the ground
+        # is_on_ground = target_pos[:, 2] < 0.03
+        did_slide = (target_xy_dist > 0.02)
+
+        # print(f"------------{(target_xy_dist > 0.02)} - {is_on_ground} {is_sliding}")
         
         # Calculate Rewards
-        rewards = -dist - (is_sliding.float() * 10.0) 
+        rewards = -dist - (did_slide.float() * 10.0) 
         
         # Calculate Task Terminations
-        termination_dones = (dist < 0.05) | is_sliding
+        termination_dones = (dist < 0.05) | did_slide
         
         return rewards, termination_dones
 
