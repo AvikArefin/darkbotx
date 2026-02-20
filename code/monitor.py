@@ -18,8 +18,8 @@ matplotlib.use('QtAgg')
 from code.logger_setup import setup_logger
 
 # CONSTANTS
-WIDTH = 1200 
-HEIGHT = 800
+WIDTH = 600 
+HEIGHT = 400
 
 JOINT_NAMES = ['panda_joint1', 'panda_joint2', 'panda_joint3', 'panda_joint4', 'panda_joint5', 'panda_joint6', 'panda_joint7', 'panda_finger_joint1', 'panda_finger_joint2']
 JOINT_LOWER_LIMITS = [-2.9671, -1.8326, -2.9671, -3.1416, -2.9671, -0.0873, -2.9671, 0., 0.]
@@ -179,6 +179,17 @@ class Monitor:
     def setup_ui(self) -> None:
         self.window.setWindowTitle(f"Monitor - {self.num_envs} Environments")
         self.window.resize(WIDTH, HEIGHT)
+        
+        # --- NEW POSITIONING LOGIC ---
+        screen = QApplication.primaryScreen().availableGeometry()
+        
+        # Calculate the starting X position (The middle of the screen)
+        start_x = screen.width() // 2
+        
+        # setGeometry(x, y, width, height)
+        self.window.setGeometry(start_x, 0, screen.width() // 2, screen.height())
+        # -----------------------------
+        
         self.window.closeEvent = self.on_close
         
         # Main widget
