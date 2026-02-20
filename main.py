@@ -248,15 +248,13 @@ def run_random_simulation(debug: bool = False):
 
 def run_manual_simulation():
     """
-    Runs the simulation in manual control mode using the Custom Monitor GUI
-    with multi-environment support.
+    Runs the simulation in manual control mode.
+    Initializes sliders to a safe "home" pose to prevent snapping.
     """
     # 1. Setup Environment
-    # You can change num_envs in env_cfg to test the monitor's grid layout
     manual_env_cfg = env_cfg.copy()
-    manual_env_cfg["episode_length_s"] = 999999.0
+    manual_env_cfg["episode_length_s"] = 99999.0
     
-    # Initialize Genesis Environment
     env = FastFrankaEnv(
         env_cfg=manual_env_cfg, 
         reward_cfg=reward_cfg, 
@@ -265,25 +263,32 @@ def run_manual_simulation():
     )
     
     # 2. Setup GUI Monitor
-    monitor : Monitor = Monitor(sys.argv, num_envs=env.num_envs)
+    monitor = Monitor(sys.argv, num_envs=env.num_envs)
     env.reset()
     
-    # Track total rewards per environment
-    total_rewards = [0.0 for _ in range(env.num_envs)]
-    step_count = 0
+    # --- INFO: Initialize Sliders to Safe Defaults ---
+    home_pos_action = [0.5000, 0.2773, 0.5000, 0.2384, 0.5000, 0.4214, 0.6355, 1.0000, 1.0000]
+    
+    # Apply defaults to all sliders in all panels
+    for panel in monitor.env_panels:
+        for i, val in enumerate(home_pos_action):
+            if i < len(panel.joints_var):
+                # .set() updates the slider position and the text label
+                panel.joints_var[i].set(val)
+
+    # Trackers
+    total_rewards = [0.0] * env.num_envs
 
     def physics_loop():       
-        nonlocal step_count, total_rewards
+        nonlocal total_rewards
         
-        # A. Read Sliders -> Action Vector
-        # Shape: (num_envs, 9) -> [Batch, Actions]
-        # We use [0, 1] range because env.py uses absolute control: target = lower + action * (upper - lower)
-        action = torch.zeros((env.num_envs, env.num_actions), device=env.device)
+        # A. Create Action Tensor
+        action = torch.tensor(home_pos_action, device=env.device).repeat(env.num_envs, 1)
         
         for env_idx in range(env.num_envs):
             panel = monitor.env_panels[env_idx]
             
-            # 1. Map Arm Sliders (indices 0-6)
+            # 1. Read Arm Sliders (0-6)
             for i in range(7):
                 if i < len(panel.joints_var):
                     slider = panel.joints_var[i]
@@ -293,61 +298,59 @@ def run_manual_simulation():
                     normalized_val = val / 1000.0
                     action[env_idx, i] = normalized_val
                     
-                    # Update Label (Approximate visual feedback)
-                    slider.label.setText(f"{slider.name}: {normalized_val:.2f}")
+                    # Update Label with target value
+                    slider.label.setText(f"{slider.name}: {normalized_val:.4f}")
 
-            # 2. Map Gripper (Index 7 Control -> Action 7 & 8)
+            # 2. Read Gripper (Index 7)
             if len(panel.joints_var) > 7:
                 gripper_slider = panel.joints_var[7]
-                g_val = gripper_slider.slider.value() # 0 to 1000
-                
-                # Map 0..1000 -> 0.0..1.0
+                g_val = gripper_slider.slider.value()
                 g_norm = g_val / 1000.0
                 
-                action[env_idx, 7] = g_norm # Left Finger
-                action[env_idx, 8] = g_norm # Right Finger
+                # Apply to both finger actions
+                action[env_idx, 7] = g_norm 
+                action[env_idx, 8] = g_norm
                 
-                gripper_slider.label.setText(f"{gripper_slider.name}: {g_norm:.2f}")
+                gripper_slider.label.setText(f"{gripper_slider.name}: {g_norm:.4f}")
                 
-                # Update the 2nd gripper slider visually if it exists
+                # Visually sync the 2nd finger slider (Index 8) if it exists
                 if len(panel.joints_var) > 8:
                     panel.joints_var[8].slider.setValue(g_val)
-                    panel.joints_var[8].label.setText(f"{panel.joints_var[8].name}: {g_norm:.2f}")
+                    panel.joints_var[8].label.setText(f"{panel.joints_var[8].name}: {g_norm:.4f}")
 
         # B. Step Physics
-        # FastFrankaEnv returns: (obs, rewards, dones, infos)
         obs, rewards, dones, infos = env.step(action)
         
-        step_count += 1
-        
-        # C. Update Telemetry
-        for env_idx in range(env.num_envs):
-            panel = monitor.env_panels[env_idx]
-            
-            # Accumulate reward for this specific env
-            current_reward = rewards[env_idx].item()
-            total_rewards[env_idx] += current_reward
-            
-            panel.update_plot(total_rewards[env_idx])
-            
-            # Optional: Update Cube Label if info is available
-            if "cube_info" in infos:
-                # Depending on how info is structured, it might be a list or scalar
-                cube_text = infos["cube_info"][env_idx] if isinstance(infos["cube_info"], list) else infos["cube_info"]
+        # Extract telemetry
+        target_pos = infos.get("target_pos")
+        dist = infos.get("dist")
+
+        # C. Update Monitor UI
+        for i in range(env.num_envs):
+            panel = monitor.env_panels[i]
+
+            # 1. Update Reward Plot
+            total_rewards[i] += rewards[i].item()
+            panel.update_plot(total_rewards[i])
+
+            # NOTE: Removed panel.update_joints(dofs_pos) here!
+            # If we update the sliders with physical pos, the user can't drag them!
+
+            # 2. Update Cube Label
+            if target_pos is not None and dist is not None:
+                # Convert to standard python types to avoid tensor format errors
+                target_p = target_pos[i].tolist()
+                d = dist[i].item()
+
+                cube_text = f"XYZ: [{target_p[0]:.2f}, {target_p[1]:.2f}, {target_p[2]:.2f}]\ndist: {d:.4f}"
                 panel.set_cube_label(cube_text)
 
-        # D. Auto-Reset Handling
-        # Genesis auto-resets in step(), so we just handle the GUI plot resets here
-        if dones.any():
-            reset_envs = dones.nonzero(as_tuple=False).flatten()
-            for env_idx in reset_envs:
-                # Convert tensor index to int
-                idx = env_idx.item()
-                # Reset the accumulated reward and clear the plot for this specific env
-                total_rewards[idx] = 0.0
-                monitor.env_panels[idx].reset_plot()
+            # 3. Handle Episode Completion (Reset Plot)
+            if dones[i]:
+                total_rewards[i] = 0.0
+                panel.reset_plot()
 
-    # 3. Start the GUI Event Loop
+    # 3. Start Loop
     try:
         logger.info("--- GUI: MANUAL SIMULATION STARTED ---")
         monitor.start_manual_loop(physics_loop)
