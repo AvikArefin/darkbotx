@@ -232,16 +232,27 @@ def run_simulation(model, id: str, episodes: int = 3):
     finally:
         env.close()
 
-def run_manual_simulation(id: str):
+def run_manual_simulation():
     """
-    Runs the simulation in manual control mode using QTimer for the loop.
+    Runs the simulation in manual control mode using the Custom Monitor GUI.
     """
-
+    # 1. Setup Environment
+    # Force 1 environment for manual control
+    manual_env_cfg = env_cfg.copy()
+    manual_env_cfg["num_envs"] = 1
+    manual_env_cfg["episode_length_s"] = 9999999.0
+    
+    # Initialize Genesis Environment
+    env = FastFrankaEnv(
+        env_cfg=manual_env_cfg, 
+        reward_cfg=reward_cfg, 
+        robot_cfg=robot_cfg, 
+        show_viewer=True
+    )
+    
+    # 2. Setup GUI Monitor
     monitor : Monitor = Monitor(sys.argv)
-
-    # 1. Setup Environment with a high step limit for continuous play
-    env = gym.make(id, render_mode="human", control_mode="joints", max_episode_steps=999999)
-    obs, _ = env.reset()
+    env.reset()
     
     total_reward: float = 0.
     step_count: int = 0
@@ -249,64 +260,79 @@ def run_manual_simulation(id: str):
     def physics_loop():       
         nonlocal step_count, total_reward
         
-        # A. Read Sliders -> Action Vector (size 8: 7 arm + 1 gripper)
-        action = np.zeros(8)
+        # A. Read Sliders -> Action Vector
+        # Shape: (1, 9) -> [Batch, Actions]
+        # We use [0, 1] range because your env.py uses absolute control:
+        # target = lower + action * (upper - lower)
+        action = torch.zeros((1, 9), device=env.device)
         
-        # Map Arm Sliders (indices 0-6)
+        # 1. Map Arm Sliders (indices 0-6)
         for i in range(7):
-            slider_widget = monitor.joints_var[i]
-            val = slider_widget.slider.value() # 0 to 1000
-            action[i] = (val / 500.0) - 1.0    # Map to -1.0 to 1.0
-            
-            # Update label to show physical value
-            phys_val = slider_widget.min_val + (val / 1000.0) * slider_widget.range_span
-            slider_widget.label.setText(f"{slider_widget.name}: {phys_val:.4f}")
+            if i < len(monitor.joints_var):
+                slider = monitor.joints_var[i]
+                val = slider.slider.value() # 0 to 1000
+                
+                # Map 0..1000 -> 0.0..1.0
+                normalized_val = val / 1000.0
+                action[0, i] = normalized_val
+                
+                # Update Label (Approximate visual feedback)
+                slider.label.setText(f"{slider.name}: {normalized_val:.2f}")
 
-        # Map Gripper Slider (index 7)
-        # We use the 8th slider to control the gripper action
-        gripper_slider = monitor.joints_var[7]
-        g_val = gripper_slider.slider.value()
-        action[7] = (g_val / 500.0) - 1.0
-        
-        # Update gripper labels (Panda has two finger joints, usually synced)
-        phys_g = gripper_slider.min_val + (g_val / 1000.0) * gripper_slider.range_span
-        gripper_slider.label.setText(f"{gripper_slider.name}: {phys_g:.4f}")
-        if len(monitor.joints_var) > 8:
-            monitor.joints_var[8].label.setText(f"{monitor.joints_var[8].name}: {phys_g:.4f}")
-            # Mirror the slider position visually for the second finger
-            monitor.joints_var[8].slider.setValue(g_val)
+        # 2. Map Gripper (Index 7 Control -> Action 7 & 8)
+        if len(monitor.joints_var) > 7:
+            gripper_slider = monitor.joints_var[7]
+            g_val = gripper_slider.slider.value() # 0 to 1000
+            
+            # Map 0..1000 -> 0.0..1.0
+            g_norm = g_val / 1000.0
+            
+            action[0, 7] = g_norm # Left Finger
+            action[0, 8] = g_norm # Right Finger
+            
+            gripper_slider.label.setText(f"{gripper_slider.name}: {g_norm:.2f}")
+            
+            # Update the 2nd gripper slider visually if it exists
+            if len(monitor.joints_var) > 8:
+                monitor.joints_var[8].slider.setValue(g_val)
+                monitor.joints_var[8].label.setText(f"{monitor.joints_var[8].name}: {g_norm:.2f}")
 
         # B. Step Physics
-        # obs, reward, terminated, truncated, info = env.unwrapped.interactive_step(action)
-        obs, reward, terminated, truncated, info = env.step(action)
+        # FastFrankaEnv returns: (obs, rewards, dones, infos)
+        obs, reward, done, info = env.step(action)
         
         step_count += 1
-        total_reward += float(reward)
+        
+        # Take the scalar reward from the (1,) tensor
+        current_reward = reward.item()
+        total_reward += current_reward
 
         # C. Update Telemetry
         monitor.update_plot(total_reward)
-        monitor.set_cube_label(info["cube_info"])
+        
+        # Optional: Update Cube Label if info is available
+        if "cube_info" in info:
+            monitor.set_cube_label(info["cube_info"])
 
-        # D. Handle Reset (Soft Reset)
-        if terminated:
-            logger.info("Environment terminated. Resetting...")
-            env.reset()
-            # We don't reset total_reward here so the plot continues 
-            # as a "lifetime" reward, or call monitor.reset_plot() if preferred.
+        # D. Auto-Reset Handling
+        # Genesis auto-resets in step(), so we just handle the GUI side here
+        if done.any():
+            # Optional: Reset plot on new episode
+            # monitor.reset_plot()
+            pass
 
-    # 4. Start the GUI Event Loop
+    # 3. Start the GUI Event Loop
     try:
+        logger.info("--- GUI: MANUAL SIMULATION STARTED ---")
         monitor.start_manual_loop(physics_loop)
-        # This blocks until the window is closed
         exit_code = monitor.exec()
-        logger.info(f"Monitor close with exit code: {exit_code}")
+        logger.info(f"Monitor closed with exit code: {exit_code}")
     except KeyboardInterrupt:
         logger.info("Simulation interrupted by user.")
     except Exception as e:
         logger.error(f"Error in manual simulation: {e}")
     finally:
-        env.close()
-        logger.info("Environment closed.")
+        logger.info("Manual Simulation Ended.")
 
 def rl_training():
     # For training, episodes are not explicitly defined since we train for a total number of timesteps.
@@ -325,7 +351,7 @@ def main():
             logger.info("FINISHED. Running simulation with random actions.")
         if args.manual:
             logger.info("--- GUI: MANUAL SIMULATION ---")
-            # run_manual_simulation(id=ID)
+            run_manual_simulation()
         if args.training:
             logger.info("--- RL TRAINING ---")
             rl_training()
