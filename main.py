@@ -153,7 +153,7 @@ reward_cfg = {
 robot_cfg = {
     "ee_link_name": "hand",
     "gripper_link_names": ["left_finger", "right_finger"],
-    "home_pos": torch.tensor([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04], device=device),
+    "home_pos": torch.tensor([2., -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04], device=device),
     "ik_method": "dls_ik",
 }
 
@@ -249,109 +249,144 @@ def run_random_simulation(debug: bool = False):
 def run_manual_simulation():
     """
     Runs the simulation in manual control mode.
-    Initializes sliders to a safe "home" pose to prevent snapping.
+
+    Slider ranges are set to the strict Panda joint limits (panda_lower/panda_upper).
+    Sliders are initialised to robot_cfg["home_pos"].
+
+    Action conversion
+    -----------------
+    env.step() maps actions in [0, 1] to physical DOF positions via:
+        target_dofs_pos = env.dof_lower + action * (env.dof_upper - env.dof_lower)
+
+    So to send a desired physical value `phys` we invert that:
+        action = (phys - env.dof_lower) / (env.dof_upper - env.dof_lower)
+
+    Both finger joints (7 & 8) are driven together from slider 7.
     """
-    # 1. Setup Environment
+
+    # ------------------------------------------------------------------ #
+    # 1.  Environment                                                      #
+    # ------------------------------------------------------------------ #
     manual_env_cfg = env_cfg.copy()
     manual_env_cfg["episode_length_s"] = 99999.0
-    
-    env = FastFrankaEnv(
-        env_cfg=manual_env_cfg, 
-        reward_cfg=reward_cfg, 
-        robot_cfg=robot_cfg, 
-        show_viewer=True
-    )
-    
-    # 2. Setup GUI Monitor
-    monitor = Monitor(sys.argv, num_envs=env.num_envs)
-    env.reset()
-    
-    home_pos = robot_cfg["home_pos"]
-    
-    # Apply physical defaults to all sliders in all panels
-    for panel in monitor.env_panels:
-        for i, phys_val in enumerate(home_pos):
-            if i < len(panel.joints_var):
-                # .set() expects the actual physical joint angle, NOT the 0.0-1.0 mapped action!
-                # It safely handles mapping to the 0-1000 slider range internally.
-                panel.joints_var[i].set(phys_val)
 
-    # Trackers
+    env = FastFrankaEnv(
+        env_cfg=manual_env_cfg,
+        reward_cfg=reward_cfg,
+        robot_cfg=robot_cfg,
+        show_viewer=True,
+    )
+    env.reset()
+
+    # ------------------------------------------------------------------ #
+    # 2.  Strict Panda joint limits used for sliders                      #
+    # ------------------------------------------------------------------ #
+    panda_lower = torch.tensor(
+        [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0.0000, 0.0000],
+        device=env.device,
+    )
+    panda_upper = torch.tensor(
+        [ 2.8973,  1.7628,  2.8973, -0.0698,  2.8973,  3.7525,  2.8973, 0.0400, 0.0400],
+        device=env.device,
+    )
+    panda_range = panda_upper - panda_lower  # element-wise span
+
+    # ------------------------------------------------------------------ #
+    # 3.  Monitor + slider initialisation                                 #
+    # ------------------------------------------------------------------ #
+    monitor = Monitor(sys.argv, num_envs=env.num_envs)
+    home_pos = robot_cfg["home_pos"]  # shape: (9,)
+
+    for panel in monitor.env_panels:
+        for i in range(len(panel.joints_var)):
+            slider = panel.joints_var[i]
+
+            # Override limits stored in the FloatSlider to match panda_lower/upper
+            slider.min_val    = panda_lower[i].item()
+            slider.max_val    = panda_upper[i].item()
+            slider.range_span = panda_range[i].item()
+
+            # Initialise visual position to the home pose
+            slider.set(home_pos[i].item())
+
+    # ------------------------------------------------------------------ #
+    # 4.  Physics / GUI loop                                              #
+    # ------------------------------------------------------------------ #
     total_rewards = [0.0] * env.num_envs
 
-    def physics_loop():       
+    def physics_loop():
         nonlocal total_rewards
-        
-        # A. Create Empty Action Tensor 
-        # (It gets filled instantly by reading the sliders below, so zeros are fine here)
+
+        # --- A.  Build action tensor from slider physical values -------- #
         action = torch.zeros((env.num_envs, env.num_actions), device=env.device)
-        
+
         for env_idx in range(env.num_envs):
             panel = monitor.env_panels[env_idx]
-            
-            # 1. Read Arm Sliders (0-6)
+
+            # Arm joints 0-6
             for i in range(7):
-                if i < len(panel.joints_var):
-                    slider = panel.joints_var[i]
-                    val = slider.slider.value() # 0 to 1000
-                    
-                    # Map 0..1000 -> 0.0..1.0
-                    normalized_val = val / 1000.0
-                    action[env_idx, i] = normalized_val
-                    
-                    # Update Label with target physical value
-                    phys_val = slider.min_val + (normalized_val * slider.range_span)
-                    slider.label.setText(f"{slider.name}: {phys_val:.4f}")
+                slider = panel.joints_var[i]
 
-            # 2. Read Gripper (Index 7)
-            if len(panel.joints_var) > 7:
-                gripper_slider = panel.joints_var[7]
-                g_val = gripper_slider.slider.value()
-                g_norm = g_val / 1000.0
-                
-                # Apply to both finger actions
-                action[env_idx, 7] = g_norm 
-                action[env_idx, 8] = g_norm
-                
-                # Update Label with target physical gripper value
-                phys_g = gripper_slider.min_val + (g_norm * gripper_slider.range_span)
-                gripper_slider.label.setText(f"{gripper_slider.name}: {phys_g:.4f}")
-                
-                # Visually sync the 2nd finger slider (Index 8) if it exists
-                if len(panel.joints_var) > 8:
-                    panel.joints_var[8].slider.setValue(g_val)
-                    panel.joints_var[8].label.setText(f"{panel.joints_var[8].name}: {phys_g:.4f}")
+                # GUI slider integer (0-1000) -> physical value (rad)
+                gui_norm = slider.slider.value() / 1000.0
+                phys_val = slider.min_val + gui_norm * slider.range_span
 
-        # B. Step Physics
+                # Physical value -> action in [0, 1] expected by env.step()
+                dof_span  = (env.dof_upper[i] - env.dof_lower[i]).item()
+                action_val = (phys_val - env.dof_lower[i].item()) / dof_span if dof_span != 0 else 0.0
+                action[env_idx, i] = max(0.0, min(1.0, action_val))
+
+                # Refresh label
+                slider.label.setText(f"{slider.name}: {phys_val:.4f}")
+
+            # Gripper joints 7 & 8 --- driven by slider 7, mirrored to slider 8
+            g_slider  = panel.joints_var[7]
+            g_gui_norm = g_slider.slider.value() / 1000.0
+            g_phys     = g_slider.min_val + g_gui_norm * g_slider.range_span
+
+            g_dof_span = (env.dof_upper[7] - env.dof_lower[7]).item()
+            g_action   = (g_phys - env.dof_lower[7].item()) / g_dof_span if g_dof_span != 0 else 0.0
+            g_action   = max(0.0, min(1.0, g_action))
+
+            action[env_idx, 7] = g_action
+            action[env_idx, 8] = g_action  # both fingers move together
+
+            # Refresh gripper labels and mirror slider 8 visually
+            g_slider.label.setText(f"{g_slider.name}: {g_phys:.4f}")
+            f2 = panel.joints_var[8]
+            f2.slider.setValue(g_slider.slider.value())
+            f2.label.setText(f"{f2.name}: {g_phys:.4f}")
+
+        # --- B.  Step simulation ---------------------------------------- #
         obs, rewards, dones, infos = env.step(action)
-        
-        # Extract telemetry
-        target_pos = infos.get("target_pos")
-        dist = infos.get("dist")
 
-        # C. Update Monitor UI
+        target_pos = infos.get("target_pos")  # tensor (num_envs, 3), present when show_viewer=True
+        dist       = infos.get("dist")        # tensor (num_envs,),   present when show_viewer=True
+
+        # --- C.  Update Monitor UI -------------------------------------- #
         for i in range(env.num_envs):
             panel = monitor.env_panels[i]
 
-            # 1. Update Reward Plot
+            # Cumulative reward plot
             total_rewards[i] += rewards[i].item()
             panel.update_plot(total_rewards[i])
 
-            # 2. Update Cube Label
+            # Cube position + distance label
             if target_pos is not None and dist is not None:
-                # Convert to standard python types to avoid tensor format errors
-                target_p = target_pos[i].tolist()
-                d = dist[i].item()
+                tp = target_pos[i].tolist()
+                d  = dist[i].item()
+                panel.set_cube_label(
+                    f"XYZ: [{tp[0]:.3f}, {tp[1]:.3f}, {tp[2]:.3f}]   dist: {d:.4f} m"
+                )
 
-                cube_text = f"XYZ: [{target_p[0]:.2f}, {target_p[1]:.2f}, {target_p[2]:.2f}]\ndist: {d:.4f}"
-                panel.set_cube_label(cube_text)
-
-            # 3. Handle Episode Completion (Reset Plot)
+            # Reset on episode end
             if dones[i]:
                 total_rewards[i] = 0.0
                 panel.reset_plot()
 
-    # 3. Start Loop
+    # ------------------------------------------------------------------ #
+    # 5.  Start event loop                                                #
+    # ------------------------------------------------------------------ #
     try:
         logger.info("--- GUI: MANUAL SIMULATION STARTED ---")
         monitor.start_manual_loop(physics_loop)
@@ -360,7 +395,7 @@ def run_manual_simulation():
     except KeyboardInterrupt:
         logger.info("Simulation interrupted by user.")
     except Exception as e:
-        logger.error(f"Error in manual simulation: {e}")
+        logger.error(f"Error in manual simulation: {e}", exc_info=True)
     finally:
         logger.info("Manual Simulation Ended.")
 
