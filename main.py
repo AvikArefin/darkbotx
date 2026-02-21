@@ -478,7 +478,7 @@ def inference_model(model_path : str, debug : str):
         show_viewer=show_sim
     ) 
 
-    log_dir = os.path.join("logs", train_cfg["experiment_name"], train_cfg["run_name"])
+    log_dir = os.path.join("logs", "inference", train_cfg["experiment_name"], train_cfg["run_name"])
     device_str = f"{env.device.type}:0" if env.device.type in ["cuda", "mps"] else "cpu"
 
     os.makedirs(log_dir, exist_ok=True)
