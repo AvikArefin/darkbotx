@@ -353,10 +353,15 @@ def run_manual_simulation():
                 gui_norm = slider.slider.value() / 1000.0
                 phys_val = slider.min_val + gui_norm * slider.range_span
 
-                # Physical value -> action in [0, 1] expected by env.step()
+                # Physical value -> action in [-1, 1] expected by env.step()
                 dof_span  = (env.dof_upper[i] - env.dof_lower[i]).item()
-                action_val = (phys_val - env.dof_lower[i].item()) / dof_span if dof_span != 0 else 0.0
-                action[env_idx, i] = max(0.0, min(1.0, action_val))
+                
+                # Get 0 to 1 ratio
+                ratio = (phys_val - env.dof_lower[i].item()) / dof_span if dof_span != 0 else 0.0
+                
+                # Convert ratio to [-1, 1]
+                action_val = (ratio * 2.0) - 1.0
+                action[env_idx, i] = max(-1.0, min(1.0, action_val))
 
                 # Refresh label
                 slider.label.setText(f"{slider.name}: {phys_val:.4f}")
@@ -367,11 +372,12 @@ def run_manual_simulation():
             g_phys     = g_slider.min_val + g_gui_norm * g_slider.range_span
 
             g_dof_span = (env.dof_upper[7] - env.dof_lower[7]).item()
-            g_action   = (g_phys - env.dof_lower[7].item()) / g_dof_span if g_dof_span != 0 else 0.0
-            g_action   = max(0.0, min(1.0, g_action))
+            g_ratio    = (g_phys - env.dof_lower[7].item()) / g_dof_span if g_dof_span != 0 else 0.0
+            g_action   = (g_ratio * 2.0) - 1.0
+            g_action   = max(-1.0, min(1.0, g_action))
 
             action[env_idx, 7] = g_action
-            action[env_idx, 8] = g_action  # both fingers move together
+            action[env_idx, 8] = g_action  # both fingers move together 
 
             # Refresh gripper labels and mirror slider 8 visually
             g_slider.label.setText(f"{g_slider.name}: {g_phys:.4f}")

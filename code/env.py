@@ -81,7 +81,6 @@ class FastFrankaEnv(VecEnv):
                 substeps=10,
             ),
             rigid_options=gs.options.RigidOptions(
-                dt=self.ctrl_dt,
                 constraint_solver=gs.constraint_solver.Newton,
                 enable_collision=True,
                 enable_joint_limit=True,
@@ -297,7 +296,9 @@ class FastFrankaEnv(VecEnv):
             _check_nan(actions, "actions", "step")
             # Apply actions (Delta Control)
             # current_dofs_pos = self.robot.get_dofs_position()
-            target_dofs_pos = self.dof_lower + actions * (self.dof_upper - self.dof_lower)
+            dof_center = (self.dof_upper + self.dof_lower) / 2.0
+            dof_span = (self.dof_upper - self.dof_lower) / 2.0
+            target_dofs_pos = dof_center + actions * dof_span 
             _check_nan(target_dofs_pos, "target_dofs_pos (pre-clamp)", "step")
 
             target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
