@@ -139,7 +139,7 @@ env_cfg = {
     "num_obs": 12,
     "num_actions": 9,
     "action_scales": [1.0] * 9,
-    "episode_length_s": 10.0,
+    "episode_length_s": 3.0,
     "ctrl_dt": 0.01,
 
     "is_debug": True,
@@ -259,7 +259,7 @@ def run_random_simulation(debug: str):
     except KeyboardInterrupt:
         logger.info("Simulation interrupted by user.")
     except Exception as e:
-        logger.error(f"Error in random simulation: {e}")
+        logger.exception(f"Error in random simulation: {e}")
     finally:
         # Cleanup
         if monitor:
@@ -418,7 +418,7 @@ def run_manual_simulation():
     except KeyboardInterrupt:
         logger.info("Simulation interrupted by user.")
     except Exception as e:
-        logger.error(f"Error in manual simulation: {e}", exc_info=True)
+        logger.exception(f"Error in manual simulation: {e}", exc_info=True)
     finally:
         logger.info("Manual Simulation Ended.")
 
@@ -446,7 +446,7 @@ def rl_training():
     except KeyboardInterrupt:
         logger.warning("\nCtrl + C received! Cleaning up resources ...")
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
+        logger.exception(f"An unexpected error occurred: {e}")
     finally:
         runner.save(MODEL_PATH)
         logger.info(f"RL TRAINING STOPPED! model saved to: {MODEL_PATH}")
@@ -554,7 +554,7 @@ def inference_model(model_path : str, debug : str):
     except KeyboardInterrupt:
         logger.warning("\nCtrl + C received! Cleaning up resources ...")
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
+        logger.exception(f"An unexpected error occurred: {e}", exc_info=True)
     finally:
         if monitor:
             monitor.close()
@@ -582,11 +582,11 @@ def main():
                 logger.info(f"Inferencing '{args.load}' model")
                 inference_model(model_path=args.load, debug=args.debug)
             else:
-                logger.error("No trained model Found!")
+                logger.exception("No trained model Found!")
     except KeyboardInterrupt:
         logger.warning("\nCtrl + C received! Cleaning up resources ...")
     except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
+        logger.exception(f"An unexpected error occurred: {e}")
     finally:
         # Force pybullet to disconnect and the app to quit
         logger.info("SHUTDOWN COMPLETE")
