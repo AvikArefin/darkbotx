@@ -21,7 +21,7 @@ ENTRY_POINT: str = "environment:PandaPickAndPlaceEnv"    # <filename/module>:<cl
 
 MAX_EPISODE_STEPS: int = int(4e2)
 MODEL_PATH = "models/sac_panda_pickandplace.zip"
-DEFAULT_TOTAL_TIMESTEPS = 500_000
+DEFAULT_MAX_ITERATIONS = 1500
 TOTAL_EPISODES=10
 DEFAULT_CONTROL_MODE="ee"
 
@@ -45,7 +45,7 @@ def get_args():
 
     parser.add_argument("-m", "--manual", action="store_true", help="Run manual simulation.")
 
-    parser.add_argument("-t", "--training", nargs="?", const=DEFAULT_TOTAL_TIMESTEPS, type=positive_int, help="RL training. Trains new model if no --load provided. default: %(const)s")
+    parser.add_argument("-t", "--training", nargs="?", const=DEFAULT_MAX_ITERATIONS, type=positive_int, help="RL training. Trains new model if no --load provided. default: %(const)s")
     parser.add_argument("-r","--random", nargs="?", const=TOTAL_EPISODES, type=positive_int, help="Run simulation with random actions. default: %(const)s")
     parser.add_argument("-i", "--inference", nargs="?", const=TOTAL_EPISODES, type=positive_int, help="RL model inference simulation with trained model. Loads default model if no --load arg passed. default: %(const)s")
     
@@ -65,7 +65,7 @@ train_cfg = {
     "class_name": "OnPolicyRunner",
     # General
     "num_steps_per_env": 24,
-    "max_iterations": 1500,
+    "max_iterations": args.training,
     "seed": 1,
     
     # Observations
@@ -132,17 +132,18 @@ train_cfg = {
 }
 
 env_cfg = {
-    "num_envs": 1,
+    "num_envs": 4,
     "num_obs": 14,
     "num_actions": 9,
     "action_scales": [1.0] * 9,
-    "episode_length_s": 1.0,
+    "episode_length_s": 10.0,
     "ctrl_dt": 0.01,
     "use_rasterizer": True,
     "is_debug": True,
     "logging_level": "info",
     "performance_mode": True,
     "show_FPS": True,
+    "is_monitor": args.monitor
 }
 
 reward_cfg = {
@@ -168,7 +169,7 @@ def run_random_simulation(debug: bool = False):
         env_cfg=env_cfg,
         reward_cfg=reward_cfg,
         robot_cfg=robot_cfg,
-        show_viewer=debug
+        show_viewer=False,
     )
 
     # 2. Setup GUI Monitor conditionally
@@ -409,7 +410,27 @@ def rl_training():
         robot_cfg=robot_cfg, 
         show_viewer=show_viewer
     )
-    
+
+    log_dir = os.path.join("logs", train_cfg["experiment_name"], train_cfg["run_name"])
+    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+
+    # Format device string safely (e.g., "cuda:0" or "cpu")
+    device_str = f"{env.device.type}:0" if env.device.type in ["cuda", "mps"] else "cpu:0"
+
+    # Initialize the Runner
+    runner = OnPolicyRunner(env, train_cfg, log_dir, device=device_str)
+
+    try:
+        runner.learn(train_cfg["max_iterations"])
+    except KeyboardInterrupt:
+        logger.warning("\nCtrl + C received! Cleaning up resources ...")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+    finally:
+        runner.save(MODEL_PATH)
+        logger.info(f"RL TRAINING STOPPED! model saved to: {MODEL_PATH}")
+
 def main():
     """Main function to train and evaluate the model."""
     

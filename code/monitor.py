@@ -187,7 +187,7 @@ class Monitor:
         start_x = screen.width() // 2
         
         # setGeometry(x, y, width, height)
-        self.window.setGeometry(start_x, 0, screen.width() // 2, screen.height())
+        self.window.setGeometry(start_x, 0, screen.width() // 3, screen.height()//2)
         # -----------------------------
         
         self.window.closeEvent = self.on_close

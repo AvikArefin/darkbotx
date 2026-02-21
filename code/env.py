@@ -9,6 +9,7 @@ class FastFrankaEnv(VecEnv):
     def __init__(self, env_cfg: dict, reward_cfg: dict, robot_cfg: dict, show_viewer: bool = False):
         # RSL-RL required attributes
         self.show_viewer = show_viewer
+        self.is_monitor : bool = env_cfg["is_monitor"]
         self.num_envs : int = env_cfg["num_envs"] 
         self.num_actions : int = env_cfg["num_actions"]
         self.num_obs : int = env_cfg["num_obs"]
@@ -20,7 +21,7 @@ class FastFrankaEnv(VecEnv):
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
 
         # configs
-        self.env_cfg : dict = env_cfg
+        self.cfg : dict = env_cfg
         self.reward_scales : dict = reward_cfg
         self.action_scales = torch.tensor(env_cfg["action_scales"], device=self.device)
 
@@ -172,12 +173,17 @@ class FastFrankaEnv(VecEnv):
 
     def _compute_reward(self):
         """Calculates rewards and termination conditions."""
+        rewards = 0
         ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
         target_pos = self.target.get_pos()
         
+        # time penalty
+        rewards += -0.1
+
         # Distance from robot gripper to target
         dist = torch.norm(ee_pos - target_pos, dim=-1)
-        
+        rewards += -dist  
+
         # Horizontal (XY) displacement of target
         target_xy_dist = torch.norm(target_pos[:, :2] - self.init_target_pos[:2], dim=-1)
         
@@ -186,10 +192,9 @@ class FastFrankaEnv(VecEnv):
         did_slide = (target_xy_dist > 0.02)
 
         # print(f"------------{(target_xy_dist > 0.02)} - {is_on_ground} {is_sliding}")
+        rewards += -did_slide.float() * 10.0
         
-        # Calculate Rewards
-        rewards = -dist - (did_slide.float() * 10.0) 
-        
+        # is_success
         # Calculate Task Terminations
         termination_dones = (dist < 0.05) | did_slide
         
@@ -263,7 +268,7 @@ class FastFrankaEnv(VecEnv):
         # Fetch Final Observations
         obs = self.get_observations()
 
-        if self.show_viewer:
+        if self.is_monitor:
             dofs_pos = self.robot.get_dofs_position()
             target_pos = self.target.get_pos()
             ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
