@@ -19,11 +19,11 @@ from code.monitor import Monitor
 ID: str = "PandaPickAndPlace-v0"                         # <name>-v<version>
 ENTRY_POINT: str = "environment:PandaPickAndPlaceEnv"    # <filename/module>:<class_name>
 
-MAX_EPISODE_STEPS: int = int(4e2)
-MODEL_PATH = "models/sac_panda_pickandplace.zip"
-DEFAULT_MAX_ITERATIONS = 1500
-TOTAL_EPISODES=10
 DEFAULT_CONTROL_MODE="ee"
+DEFAULT_DEBUG_MODE = "both"
+DEFAULT_MAX_ITERATIONS = 1500
+DEFAULT_TOTAL_EPISODES=10
+MODEL_PATH = "models/model_panda_pickandplace.pt"
 
 # logger setup
 logger = setup_logger(__name__)
@@ -46,18 +46,21 @@ def get_args():
     parser.add_argument("-m", "--manual", action="store_true", help="Run manual simulation.")
 
     parser.add_argument("-t", "--training", nargs="?", const=DEFAULT_MAX_ITERATIONS, type=positive_int, help="RL training. Trains new model if no --load provided. default: %(const)s")
-    parser.add_argument("-r","--random", nargs="?", const=TOTAL_EPISODES, type=positive_int, help="Run simulation with random actions. default: %(const)s")
-    parser.add_argument("-i", "--inference", nargs="?", const=TOTAL_EPISODES, type=positive_int, help="RL model inference simulation with trained model. Loads default model if no --load arg passed. default: %(const)s")
+    parser.add_argument("-r","--random", nargs="?", const=DEFAULT_TOTAL_EPISODES, type=positive_int, help="Run simulation with random actions. default: %(const)s")
+    parser.add_argument("-i", "--inference", nargs="?", const=DEFAULT_TOTAL_EPISODES, type=positive_int, help="RL model inference simulation with trained model. Loads default model if no --load arg passed. default: %(const)s")
+
+    debug_modes = ["monitor", "sim", "both"]
+    parser.add_argument("--debug", nargs="?", const=DEFAULT_DEBUG_MODE, type=str, choices=debug_modes, default=None, help=f"Available debug modes: {debug_modes}. default: %(const)s")
     
     parser.add_argument("--load", nargs="?", const=MODEL_PATH, type=str, default=None, help="Pass model to -i & -t. default: %(const)s")
     parser.add_argument("--control_mode", nargs="?", const=DEFAULT_CONTROL_MODE, type=str, default=DEFAULT_CONTROL_MODE, help="PyBullet Env Control Mode. default: %(const)s")
-    parser.add_argument("--monitor", action="store_true", help="provides monitor for env")
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
         sys.exit(1)
 
     return parser.parse_args()
+
 args = get_args()
 
 # configuration
@@ -138,12 +141,14 @@ env_cfg = {
     "action_scales": [1.0] * 9,
     "episode_length_s": 10.0,
     "ctrl_dt": 0.01,
-    "use_rasterizer": True,
+
     "is_debug": True,
     "logging_level": "info",
+    "show_FPS": False,
+    "is_monitor": False,
+
+    "use_rasterizer": True,
     "performance_mode": True,
-    "show_FPS": True,
-    "is_monitor": args.monitor
 }
 
 reward_cfg = {
@@ -153,27 +158,48 @@ reward_cfg = {
 robot_cfg = {
     "ee_link_name": "hand",
     "gripper_link_names": ["left_finger", "right_finger"],
-    "home_pos": [0.741, 0.63, 0.023, -1.95, 0.26, 2.38, 1.21, 0.41, 0.41],
+    # "home_pos": [0.741, 0.63, 0.023, -1.95, 0.26, 2.38, 1.21, 0.41, 0.41],
+    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
     "ik_method": "dls_ik",
 }
 
 # --- TRAINING: functions and classes ---
-def run_random_simulation(debug: bool = False):
+def run_random_simulation(debug: str):
     """
     Runs the simulation with random actions.
     If debug is True, visualizes it using the Monitor and extracts telemetry.
     """
-    # 1. Setup Environment
+    # Setup Environment
     # show_viewer is tied to the debug flag
+
+    # config modification
+    show_sim = False
+    show_monitor = False
+    if debug == "both":
+        show_sim = True
+        show_monitor = True
+    elif debug == "sim":
+        show_sim = True
+    elif debug == "monitor":
+        show_monitor = True
+
+    env_cfg["is_monitor"] = show_monitor
+    env_cfg["episode_length_s"] = 1.0       # NOTE: 1 seconds / episode for random run
+
+    if show_sim or show_monitor:
+        env_cfg["logging_level"] = "debug"
+        env_cfg["show_FPS"] = True
+
+    # env setup
     env = FastFrankaEnv(
         env_cfg=env_cfg,
         reward_cfg=reward_cfg,
         robot_cfg=robot_cfg,
-        show_viewer=False,
+        show_viewer=show_sim,
     )
 
-    # 2. Setup GUI Monitor conditionally
-    monitor = Monitor(sys.argv, num_envs=env.num_envs) if debug else None
+    # Setup GUI Monitor conditionally
+    monitor = Monitor(sys.argv, num_envs=env.num_envs) if show_monitor else None
     
     env.reset()
     
@@ -181,26 +207,20 @@ def run_random_simulation(debug: bool = False):
     total_rewards = [0.0] * env.num_envs
 
     try:
-        if debug:
-            logger.info("--- GUI: RANDOM ACTION SIMULATION STARTED ---")
-        else:
-            logger.info("--- HEADLESS: RANDOM ACTION SIMULATION STARTED ---")
-        
-        # 3. Linear Simulation Loop
         while True:
             # If in debug mode, break the loop if the user closes the Monitor window
-            if debug and not monitor.window.isVisible():
-                break
+            if monitor and not monitor.window.isVisible():
+                break 
             
-            # A. Generate Random Actions
+            # Generate Random Actions
             # Shape: (num_envs, 9) in range [0.0, 1.0] for absolute control
             random_actions = torch.rand((env.num_envs, env.num_actions), device=env.device)
             
-            # B. Step Environment
+            # Step Environment
             obs, rewards, dones, infos = env.step(random_actions)
             
-            # C. Monitor Updates (Only if debug is enabled)
-            if debug:
+            # Monitor Updates (Only if debug is enabled)
+            if monitor:
                 # Extract telemetry directly from infos
                 dofs_pos = infos.get("dofs_pos")
                 target_pos = infos.get("target_pos")
@@ -210,16 +230,16 @@ def run_random_simulation(debug: bool = False):
                 for i in range(env.num_envs):
                     panel = monitor.env_panels[i]
 
-                    # 1. Update Reward Plot
+                    # Update Reward Plot
                     total_rewards[i] += rewards[i].item()
                     panel.update_plot(total_rewards[i])
 
-                    # 2. Update Sliders
+                    # Update Sliders
                     if dofs_pos is not None:
                         # Pass the exact physics joint angles to the sliders
                         panel.update_joints(dofs_pos[i].tolist())
 
-                    # 3. Update Cube Label
+                    # Update Cube Label
                     if target_pos is not None and dist is not None:
                         # Convert to standard python types to avoid tensor format errors
                         target_p = target_pos[i].tolist()
@@ -228,21 +248,20 @@ def run_random_simulation(debug: bool = False):
                         cube_text = f"XYZ: [{target_p[0]:.2f}, {target_p[1]:.2f}, {target_p[2]:.2f}]\ndist: {d:.4f}"
                         panel.set_cube_label(cube_text)
 
-                    # 4. Handle Episode Completion (Reset Plot)
+                    # Handle Episode Completion (Reset Plot)
                     if dones[i]:
                         total_rewards[i] = 0.0
                         panel.reset_plot()
                 
-                # D. Process GUI Events (Keep window responsive)
+                # Process GUI Events (Keep window responsive)
                 monitor.update_gui()
-
     except KeyboardInterrupt:
         logger.info("Simulation interrupted by user.")
     except Exception as e:
         logger.error(f"Error in random simulation: {e}")
     finally:
         # Cleanup
-        if debug and monitor:
+        if monitor:
             monitor.close()
         logger.info("Random Simulation Ended.")
 
@@ -268,7 +287,9 @@ def run_manual_simulation():
     # 1.  Environment                                                      #
     # ------------------------------------------------------------------ #
     manual_env_cfg = env_cfg.copy()
+    manual_env_cfg["num_envs"] = 1
     manual_env_cfg["episode_length_s"] = 99999.0
+    manual_env_cfg["is_monitor"] = True
 
     env = FastFrankaEnv(
         env_cfg=manual_env_cfg,
@@ -431,6 +452,115 @@ def rl_training():
         runner.save(MODEL_PATH)
         logger.info(f"RL TRAINING STOPPED! model saved to: {MODEL_PATH}")
 
+def inference_model(model_path : str, debug : str):
+    # config modification
+    show_sim = False
+    show_monitor = False
+    if debug == "both":
+        show_sim = True
+        show_monitor = True
+    elif debug == "sim":
+        show_sim = True
+    elif debug == "monitor":
+        show_monitor = True
+
+    env_cfg["is_monitor"] = show_monitor
+    env_cfg["num_envs"] = 1
+
+    if show_sim or show_monitor:
+        env_cfg["logging_level"] = "debug"
+        env_cfg["show_FPS"] = True
+
+    env = FastFrankaEnv(
+        env_cfg=env_cfg, 
+        reward_cfg=reward_cfg, 
+        robot_cfg=robot_cfg, 
+        show_viewer=show_sim
+    ) 
+
+    log_dir = os.path.join("logs", train_cfg["experiment_name"], train_cfg["run_name"])
+    device_str = f"{env.device.type}:0" if env.device.type in ["cuda", "mps"] else "cpu"
+
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Initialize the Runner and load the model
+    runner = OnPolicyRunner(env, train_cfg, log_dir, device=device_str)
+
+    logger.info(f"Loading model: {model_path}")
+    # Load the specific model zip file
+    runner.load(model_path)
+
+    # Get the inference policy
+    policy = runner.get_inference_policy(device=device_str)
+
+    # --- MONITOR SETUP ---
+    # Only initialize if the --monitor arg was passed
+    monitor = Monitor(sys.argv, num_envs=env.num_envs) if show_monitor else None
+    total_rewards = [0.0] * env.num_envs
+
+    obs, _ = env.reset() 
+    
+    try:
+        while True:
+            # Check if user closed the Monitor window
+            if monitor and not monitor.window.isVisible():
+                break
+
+            # Safely extract the tensor if obs is the dictionary we created
+            obs_tensor = obs["policy"] if isinstance(obs, dict) else obs
+            
+            # Predict actions using the loaded model
+            actions = policy(obs_tensor)
+
+            # Step the environment
+            obs, rewards, dones, infos = env.step(actions)
+
+            # --- MONITOR UPDATES ---
+            if monitor:
+                # Extract telemetry directly from infos
+                dofs_pos = infos.get("dofs_pos")
+                target_pos = infos.get("target_pos")
+                dist = infos.get("dist")
+
+                # Update Monitor (Iterate over all environment panels)
+                for i in range(env.num_envs):
+                    panel = monitor.env_panels[i]
+
+                    # Update Reward Plot
+                    total_rewards[i] += rewards[i].item()
+                    panel.update_plot(total_rewards[i])
+
+                    # Update Sliders
+                    if dofs_pos is not None:
+                        # Pass the exact physics joint angles to the sliders
+                        panel.update_joints(dofs_pos[i].tolist())
+
+                    # Update Cube Label
+                    if target_pos is not None and dist is not None:
+                        # Convert to standard python types to avoid tensor format errors
+                        target_p = target_pos[i].tolist()
+                        d = dist[i].item()
+
+                        cube_text = f"XYZ: [{target_p[0]:.2f}, {target_p[1]:.2f}, {target_p[2]:.2f}]\ndist: {d:.4f}"
+                        panel.set_cube_label(cube_text)
+
+                    # Handle Episode Completion (Reset Plot)
+                    if dones[i]:
+                        total_rewards[i] = 0.0
+                        panel.reset_plot()
+                
+                # Process GUI Events (Keep window responsive)
+                monitor.update_gui() 
+
+    except KeyboardInterrupt:
+        logger.warning("\nCtrl + C received! Cleaning up resources ...")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}", exc_info=True)
+    finally:
+        if monitor:
+            monitor.close()
+        logger.info(f"INFERENCE STOPPED! model={model_path}")
+
 def main():
     """Main function to train and evaluate the model."""
     
@@ -438,7 +568,7 @@ def main():
     try:
         if args.random:
             logger.info("--- GUI: RANDOM ACTION SIMULATION ---")
-            run_random_simulation(debug=args.monitor)
+            run_random_simulation(debug=args.debug)
             logger.info("FINISHED. Running simulation with random actions.")
         if args.manual:
             logger.info("--- GUI: MANUAL SIMULATION ---")
@@ -447,19 +577,13 @@ def main():
             logger.info("--- RL TRAINING ---")
             rl_training()
         if args.inference:
-            logger.info(f"--- INFERENCE RL MODEL WITH SIMULATION ---")
+            logger.info("--- INFERENCE RL MODEL WITH SIMULATION ---")
 
-            trained_model = None 
             if args.load and os.path.exists(args.load):
                 logger.info(f"Inferencing '{args.load}' model")
-            elif os.path.exists(MODEL_PATH):
-                logger.info(f"Inferencing '{MODEL_PATH}' model")
+                inference_model(model_path=args.load, debug=args.debug)
             else:
                 logger.error("No trained model Found!")
-
-            if trained_model:
-                # run_simulation(model=trained_model, id=ID, episodes=args.inference)
-                pass
     except KeyboardInterrupt:
         logger.warning("\nCtrl + C received! Cleaning up resources ...")
     except Exception as e:

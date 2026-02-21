@@ -109,9 +109,8 @@ class FastFrankaEnv(VecEnv):
         self.dof_force_upper = force_upper.to(self.device)
         self.dof_force_lower = force_lower.to(self.device)
 
-        if True:
-            self._set_pd_gains()
-            self.analyze_robot()
+        self._set_pd_gains()
+        # self.analyze_robot()
 
         # == target ==
         lower_bound, upper_bound = self.target.get_AABB(envs_idx=0)
@@ -153,7 +152,6 @@ class FastFrankaEnv(VecEnv):
         print("---------------------------------\n")
 
     def reset_at(self, env_ids):
-        print(f"RESET AT: {env_ids}")
         # robot
         self.robot.set_dofs_position(self.init_robot_dof_pos, envs_idx=env_ids)
         self.robot.set_dofs_velocity(torch.zeros_like(self.init_robot_dof_pos), envs_idx=env_ids)
