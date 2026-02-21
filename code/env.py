@@ -115,6 +115,7 @@ class FastFrankaEnv(VecEnv):
 
         # NOTE: target 
         self.init_target_pos = torch.tensor([0.5, 0.5, 0.0], device=self.device)
+        self.r_min, self.r_max = 0.3, 0.8
         self.target = self.scene.add_entity(
             gs.morphs.URDF(
                 file='assets/DarkCube/DarkCube.urdf', 
@@ -367,8 +368,16 @@ class FastFrankaEnv(VecEnv):
             )
 
             # NOTE: TARGET
+            r = self.r_min + (self.r_max - self.r_min) * torch.rand(n, device=self.device)
+            theta = 2 * math.pi * torch.rand(n, device=self.device)
+
+            x = r * torch.cos(theta)
+            y = r * torch.sin(theta)
+            z = torch.full((n,), self.init_target_pos[2].item(), device=self.device)
+
+            random_target_pos = torch.stack((x, y, z), dim=1)
             self.target.set_pos(
-                self.init_target_pos.unsqueeze(0).expand(n, -1),
+                random_target_pos,
                 envs_idx=env_ids,
             )
         except Exception as e:
