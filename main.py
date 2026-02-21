@@ -61,8 +61,6 @@ def get_args():
 args = get_args()
 
 # configuration
-device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-
 train_cfg = {
     "class_name": "OnPolicyRunner",
     # General
@@ -137,14 +135,14 @@ env_cfg = {
     "num_envs": 1,
     "num_obs": 14,
     "num_actions": 9,
-    "action_scales": torch.tensor([1.0] * 9, device=device),
+    "action_scales": [1.0] * 9,
     "episode_length_s": 1.0,
     "ctrl_dt": 0.01,
     "use_rasterizer": True,
     "is_debug": True,
     "logging_level": "info",
     "performance_mode": True,
-    "show_FPS": False,
+    "show_FPS": True,
 }
 
 reward_cfg = {
@@ -154,7 +152,7 @@ reward_cfg = {
 robot_cfg = {
     "ee_link_name": "hand",
     "gripper_link_names": ["left_finger", "right_finger"],
-    "home_pos": torch.tensor([0.741, 0.63, 0.023, -1.95, 0.26, 2.38, 1.21, 0.41, 0.41], device=device),
+    "home_pos": [0.741, 0.63, 0.023, -1.95, 0.26, 2.38, 1.21, 0.41, 0.41],
     "ik_method": "dls_ik",
 }
 
@@ -277,6 +275,7 @@ def run_manual_simulation():
         robot_cfg=robot_cfg,
         show_viewer=True,
     )
+
     env.reset()
 
     # ------------------------------------------------------------------ #
@@ -296,7 +295,7 @@ def run_manual_simulation():
     # 3.  Monitor + slider initialisation                                 #
     # ------------------------------------------------------------------ #
     monitor = Monitor(sys.argv, num_envs=env.num_envs)
-    home_pos = robot_cfg["home_pos"]  # shape: (9,)
+    home_pos = torch.tensor(robot_cfg["home_pos"], device=env.device)  # shape: (9,)
 
     for panel in monitor.env_panels:
         for i in range(len(panel.joints_var)):

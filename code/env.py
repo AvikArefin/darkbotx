@@ -22,7 +22,7 @@ class FastFrankaEnv(VecEnv):
         # configs
         self.env_cfg : dict = env_cfg
         self.reward_scales : dict = reward_cfg
-        self.action_scales : list = env_cfg["action_scales"]
+        self.action_scales = torch.tensor(env_cfg["action_scales"], device=self.device)
 
         # Tracking buffers for RSL-RL logic
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
@@ -74,23 +74,21 @@ class FastFrankaEnv(VecEnv):
         self.scene.add_entity(gs.morphs.Plane())
 
         # == robot ==
-        self.robot: gs.engine.entities.rigid_entity.rigid_entity.RigidEntity = self.scene.add_entity(
+        self.init_robot_dof_pos = torch.tensor(robot_cfg["home_pos"], device=self.device)
+        self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
-                file = 'xml/franka_emika_panda/panda.xml', 
+                file='xml/franka_emika_panda/panda.xml', 
                 pos = (0.0, 0.0, 0.0),
             )
         )
-        self.init_robot_pos = robot_cfg["home_pos"]
-        print(f"Robot Type: {type(self.robot)}")
-        
+
         # == target ==
+        self.init_target_pos = torch.tensor([0.5, 0.5, 0.0], device=self.device)
         self.target = self.scene.add_entity(
             gs.morphs.URDF(
                 file='assets/DarkCube/DarkCube.urdf', 
-                pos=(0.5, 0.5, 0.04)
             )
         )
-        self.init_target_pos = torch.tensor([0.6, 0.6, 0.04], device=self.device)
 
         # build scene
         self.env_spacing = 1.5
@@ -99,13 +97,43 @@ class FastFrankaEnv(VecEnv):
             env_spacing=(self.env_spacing, self.env_spacing)
         )
 
+        # == robot ==
+        # pos range
         lower, upper = self.robot.get_dofs_limit()
         self.dof_lower = lower.to(self.device)
         self.dof_upper = upper.to(self.device)
 
+        # force range
+        force_lower, force_upper = self.robot.get_dofs_force_range()
+        self.dof_force_upper = force_upper.to(self.device)
+        self.dof_force_lower = force_lower.to(self.device)
+
         if True:
             self._set_pd_gains()
             self.analyze_robot()
+
+        # == target ==
+        lower_bound, upper_bound = self.target.get_AABB(envs_idx=0)
+        self.init_target_pos[2] = (upper_bound[2] - lower_bound[2]) / 2.0
+        self.target.set_pos(self.init_target_pos)
+
+    def _set_pd_gains(self):
+        # Set up PD gains for all joints
+        # kp: how hard it pulls toward the target (stiffness)
+        # kv: how much it resists motion (damping/viscosity)
+
+        self.robot.set_dofs_kp(
+            torch.tensor([4500, 4500, 3500, 3500, 2000, 2000, 2000, 100, 100], device=self.device),
+        )
+
+        self.robot.set_dofs_kv(
+            torch.tensor([450, 450, 350, 350, 200, 200, 200, 10, 10], device=self.device),
+        )
+
+        self.robot.set_dofs_force_range(
+            self.dof_force_lower,
+            self.dof_force_upper,
+        )
 
     def analyze_robot(self):
         """
@@ -123,29 +151,11 @@ class FastFrankaEnv(VecEnv):
             print(f"  COM orientation (quat): {link.inertial_quat}")
         print("---------------------------------\n")
 
-    def _set_pd_gains(self):
-        # Set up PD gains for all joints
-        # kp: how hard it pulls toward the target (stiffness)
-        # kv: how much it resists motion (damping/viscosity)
-
-        self.robot.set_dofs_kp(
-            torch.tensor([4500, 4500, 3500, 3500, 2000, 2000, 2000, 100, 100], device=self.device),
-        )
-
-        self.robot.set_dofs_kv(
-            torch.tensor([450, 450, 350, 350, 200, 200, 200, 10, 10], device=self.device),
-        )
-
-        self.robot.set_dofs_force_range(
-            torch.tensor([-87, -87, -87, -87, -12, -12, -12, -20, -20], device=self.device),
-            torch.tensor([87, 87, 87, 87, 12, 12, 12, 20, 20], device=self.device),
-        )
-
     def reset_at(self, env_ids):
         print(f"RESET AT: {env_ids}")
         # robot
-        self.robot.set_dofs_position(self.init_robot_pos, envs_idx=env_ids)
-        self.robot.set_dofs_velocity(torch.zeros_like(self.init_robot_pos), envs_idx=env_ids)
+        self.robot.set_dofs_position(self.init_robot_dof_pos, envs_idx=env_ids)
+        self.robot.set_dofs_velocity(torch.zeros_like(self.init_robot_dof_pos), envs_idx=env_ids)
 
         # target
         self.target.set_pos(self.init_target_pos, envs_idx=env_ids)
@@ -183,7 +193,7 @@ class FastFrankaEnv(VecEnv):
         # Calculate Task Terminations
         termination_dones = (dist < 0.05) | did_slide
         
-        return rewards, termination_dones
+        return rewards, termination_dones 
 
     def _debug_vis(self) -> None:
         ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
