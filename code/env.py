@@ -24,6 +24,7 @@ def _check_nan(tensor: torch.Tensor, name: str, context: str = "") -> bool:
             f"max={tensor[~torch.isnan(tensor)].max().item() if (~torch.isnan(tensor)).any() else 'all nan'}"
         )
         return True
+
     if torch.isinf(tensor).any():
         inf_count = torch.isinf(tensor).sum().item()
         logger.error(
@@ -78,7 +79,7 @@ class FastFrankaEnv(VecEnv):
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
                 dt=self.ctrl_dt,
-                substeps=10,
+                substeps=50,
             ),
             rigid_options=gs.options.RigidOptions(
                 constraint_solver=gs.constraint_solver.Newton,
@@ -278,7 +279,7 @@ class FastFrankaEnv(VecEnv):
             # if did_slide:
             #     rewards += -10.0
 
-            rewards             = -dist - 0.1 
+            rewards             = -dist * dist - 0.5 
 
             is_success          = dist < 0.1
             rewards             = rewards + is_success.float() * 100.0
@@ -305,7 +306,24 @@ class FastFrankaEnv(VecEnv):
             _check_nan(target_dofs_pos, "target_dofs_pos (clamped)", "step")
 
             self.robot.control_dofs_position(target_dofs_pos)
-            self.scene.step()
+
+            # FIX: Physics step NaN recovery
+            try:
+                self.scene.step()
+            except gs.GenesisException as physics_err:
+                logger.exception(
+                    f"[PHYSICS NaN] Solver diverged: {physics_err}. "
+                    f"Resetting all {self.num_envs} envs and continuing."
+                )
+                all_ids = torch.arange(self.num_envs, device=self.device)
+                self.reset_at(all_ids)
+                self.episode_length_buf.zero_()
+                obs = self.get_observations()
+                rewards = torch.zeros(self.num_envs, device=self.device)
+                dones   = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
+                infos   = {"time_outs": dones}
+                return obs, rewards, dones, infos 
+            # FIX: -----------------------------------------------------------------------------
 
             # Debug Visualization (Optional)
             if self.show_viewer:
