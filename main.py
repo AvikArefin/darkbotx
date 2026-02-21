@@ -136,7 +136,7 @@ train_cfg = {
 
 env_cfg = {
     "num_envs": 4,
-    "num_obs": 14,
+    "num_obs": 12,
     "num_actions": 9,
     "action_scales": [1.0] * 9,
     "episode_length_s": 10.0,
@@ -183,6 +183,7 @@ def run_random_simulation(debug: str):
     elif debug == "monitor":
         show_monitor = True
 
+    env_cfg["num_envs"] = 1
     env_cfg["is_monitor"] = show_monitor
     env_cfg["episode_length_s"] = 1.0       # NOTE: 1 seconds / episode for random run
 
@@ -423,13 +424,11 @@ def run_manual_simulation():
 
 def rl_training():
     # For training, episodes are not explicitly defined since we train for a total number of timesteps.
-    show_viewer = True
-
     env = FastFrankaEnv(
         env_cfg=env_cfg, 
         reward_cfg=reward_cfg, 
         robot_cfg=robot_cfg, 
-        show_viewer=show_viewer
+        show_viewer=False
     )
 
     log_dir = os.path.join("logs", train_cfg["experiment_name"], train_cfg["run_name"])

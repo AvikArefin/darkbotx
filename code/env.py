@@ -8,7 +8,7 @@ from tensordict import TensorDict
 class FastFrankaEnv(VecEnv):
     def __init__(self, env_cfg: dict, reward_cfg: dict, robot_cfg: dict, show_viewer: bool = False):
         # RSL-RL required attributes
-        self.show_viewer = show_viewer
+        self.show_viewer : bool = show_viewer
         self.is_monitor : bool = env_cfg["is_monitor"]
         self.num_envs : int = env_cfg["num_envs"] 
         self.num_actions : int = env_cfg["num_actions"]
@@ -117,6 +117,12 @@ class FastFrankaEnv(VecEnv):
         self.init_target_pos[2] = (upper_bound[2] - lower_bound[2]) / 2.0
         self.target.set_pos(self.init_target_pos)
 
+        if show_viewer:
+            self._init_vis_offsets()
+
+    """
+    INIT HELPERS
+    """
     def _set_pd_gains(self):
         # Set up PD gains for all joints
         # kp: how hard it pulls toward the target (stiffness)
@@ -151,14 +157,40 @@ class FastFrankaEnv(VecEnv):
             print(f"  COM orientation (quat): {link.inertial_quat}")
         print("---------------------------------\n")
 
-    def reset_at(self, env_ids):
-        # robot
-        self.robot.set_dofs_position(self.init_robot_dof_pos, envs_idx=env_ids)
-        self.robot.set_dofs_velocity(torch.zeros_like(self.init_robot_dof_pos), envs_idx=env_ids)
+    def _init_vis_offsets(self):
+        """Precomputes the (num_rendered, 3) grid-offset tensor once on GPU."""
+        num_rendered = min(self.num_envs, 10)
+        spacing      = self.env_spacing[0] if isinstance(self.env_spacing, tuple) else self.env_spacing
+        n_cols       = math.ceil(math.sqrt(self.num_envs))
+        n_rows       = math.ceil(self.num_envs / n_cols)
+        cx, cy       = (n_rows - 1) / 2.0, (n_cols - 1) / 2.0
 
-        # target
-        self.target.set_pos(self.init_target_pos, envs_idx=env_ids)
+        offsets = [
+            [(i // n_cols - cx) * spacing, (i % n_cols - cy) * spacing, 0.0]
+            for i in range(num_rendered)
+        ]
+        self.vis_offsets = torch.tensor(offsets, dtype=torch.float32, device=self.device)
 
+    def _debug_vis(self):
+        ee_pos = (
+            self.robot.get_link("left_finger").get_pos()
+            + self.robot.get_link("right_finger").get_pos()
+        ) / 2.0
+        target_pos   = self.target.get_pos()
+        num_rendered = self.vis_offsets.shape[0]
+
+        self.scene.clear_debug_objects()
+        for i in range(num_rendered):
+            offset = self.vis_offsets[i]       # precomputed (3,) slice — no allocation
+            self.scene.draw_debug_line(
+                start=target_pos[i] + offset,
+                end=ee_pos[i]       + offset,
+                color=(0, 1, 0),
+            )       
+
+    """
+    CORE API
+    """
     def get_observations(self) -> TensorDict:
         """Fetches the current state of the robot and target."""
         dofs_pos = self.robot.get_dofs_position()
@@ -171,74 +203,35 @@ class FastFrankaEnv(VecEnv):
 
     def _compute_reward(self):
         """Calculates rewards and termination conditions."""
-        rewards = 0
-        ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
+        termination_dones = False
+        ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2.0
         target_pos = self.target.get_pos()
-        
-        # time penalty
-        rewards += -0.1
 
         # Distance from robot gripper to target
         dist = torch.norm(ee_pos - target_pos, dim=-1)
-        rewards += -dist  
 
         # Horizontal (XY) displacement of target
-        target_xy_dist = torch.norm(target_pos[:, :2] - self.init_target_pos[:2], dim=-1)
+        # target_xy_dist = torch.norm(target_pos[:, :2] - self.init_target_pos[:2], dim=-1)
         
         # When sliding, in most cases, it does not stay on the ground
         # is_on_ground = target_pos[:, 2] < 0.03
-        did_slide = (target_xy_dist > 0.02)
+        # did_slide = (target_xy_dist > 0.02)
 
         # print(f"------------{(target_xy_dist > 0.02)} - {is_on_ground} {is_sliding}")
-        rewards += -did_slide.float() * 10.0
-        
-        # is_success
-        # Calculate Task Terminations
-        termination_dones = (dist < 0.05) | did_slide
+        # if did_slide:
+        #     rewards += -10.0
+
+        rewards             = -dist - 0.1 
+
+        is_success          = dist < 0.05                        # (num_envs,) bool
+        rewards             = rewards + is_success.float() * 100.0
+        termination_dones   = is_success                         # (num_envs,) bool
         
         return rewards, termination_dones 
 
-    def _debug_vis(self) -> None:
-        ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
-        target_pos = self.target.get_pos()
-        
-        self.scene.clear_debug_objects()
-        num_rendered = min(self.num_envs, 10) 
-        
-        # --- Simplified Grid Math ---
-        # Assuming self.env_spacing is a tuple like (5.0, 5.0), we just take the first value
-        spacing = self.env_spacing[0] if isinstance(self.env_spacing, tuple) else self.env_spacing
-        
-        n_cols = math.ceil(math.sqrt(self.num_envs))
-        n_rows = math.ceil(self.num_envs / n_cols)
-        
-        # Calculate the "center index" (how many rows/cols to shift back)
-        center_x_idx = (n_rows - 1) / 2.0
-        center_y_idx = (n_cols - 1) / 2.0
-
-        for i in range(num_rendered):
-            row = i // n_cols
-            col = i % n_cols
-            
-            # Clean, single-multiplier offset calculation
-            visual_offset = torch.tensor([
-                (row - center_x_idx) * spacing, 
-                (col - center_y_idx) * spacing, 
-                0.0
-            ], device=self.device)
-            
-            global_start = target_pos[i] + visual_offset
-            global_end = ee_pos[i] + visual_offset
-
-            self.scene.draw_debug_line(
-                start=global_start, 
-                end=global_end,
-                color=(0, 1, 0),
-            )       
-
     def step(self, actions):
         # 1. Apply actions (Delta Control)
-        current_dofs_pos = self.robot.get_dofs_position()
+        # current_dofs_pos = self.robot.get_dofs_position()
         target_dofs_pos = self.dof_lower + actions * (self.dof_upper - self.dof_lower)
         target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
 
@@ -269,7 +262,7 @@ class FastFrankaEnv(VecEnv):
         if self.is_monitor:
             dofs_pos = self.robot.get_dofs_position()
             target_pos = self.target.get_pos()
-            ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2
+            ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2.0
             dist = torch.norm(ee_pos - target_pos, dim=-1)
 
             infos = {
@@ -284,6 +277,22 @@ class FastFrankaEnv(VecEnv):
             }
         
         return obs, rewards, total_dones, infos 
+
+    def reset_at(self, env_ids: torch.Tensor):
+        n = len(env_ids)
+        # Expand 1-D init tensors to (n, dofs) / (n, 3) — all on GPU
+        self.robot.set_dofs_position(
+            self.init_robot_dof_pos.unsqueeze(0).expand(n, -1),
+            envs_idx=env_ids,
+        )
+        self.robot.set_dofs_velocity(
+            torch.zeros(n, self.num_actions, device=self.device),
+            envs_idx=env_ids,
+        )
+        self.target.set_pos(
+            self.init_target_pos.unsqueeze(0).expand(n, -1),
+            envs_idx=env_ids,
+        )
 
     def reset(self):
         # Reset all environments
