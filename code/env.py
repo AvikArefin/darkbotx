@@ -53,14 +53,16 @@ class FastFrankaEnv(VecEnv):
 
         self.success_range = 0.15 # WARN: This property will be deprecated in future.  
 
-        # INFO: configs
         self.cfg : dict = env_cfg
         self.reward_scales : dict = reward_cfg
         self.action_scales = torch.tensor(env_cfg["action_scales"], device=self.device)
 
         # Tracking buffers for RSL-RL logic
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
-        
+
+        self.last_actions = torch.zeros(self.num_envs, self.num_actions, device=self.device)
+
+        # INFO: SETUP GENESIS ENGINE
         gs.init(
             seed=None,
             precision="32",
@@ -103,10 +105,10 @@ class FastFrankaEnv(VecEnv):
             show_viewer=show_viewer,
         )
         
-        # INFO: ADD ELEMENTS TO THE SCENE
+        # NOTE: add plane to the scene
         self.scene.add_entity(gs.morphs.Plane())
 
-        # NOTE: robot
+        # NOTE: add robot to the scene
         self.init_robot_dof_pos = torch.tensor(robot_cfg["home_pos"], device=self.device)
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
@@ -115,7 +117,7 @@ class FastFrankaEnv(VecEnv):
             )
         )
 
-        # NOTE: target 
+        # NOTE: add target to the scene
         self.init_target_pos = torch.tensor([0.5, 0.5, 0.0], device=self.device)
         self.r_min, self.r_max = 0.3, 0.8
         self.target = self.scene.add_entity(
@@ -124,14 +126,14 @@ class FastFrankaEnv(VecEnv):
             )
         )
 
-        # NOTE: build scene
+        # NOTE: build the scene
         self.env_spacing = 1.5
         self.scene.build(
             n_envs=self.num_envs, 
             env_spacing=(self.env_spacing, self.env_spacing)
         )
 
-        # NOTE: robot 
+        # NOTE: init robot params
         # pos range
         lower, upper = self.robot.get_dofs_limit()
         self.dof_lower = lower.to(self.device)
@@ -148,13 +150,17 @@ class FastFrankaEnv(VecEnv):
         self._set_pd_gains()
         # self.analyze_robot()
 
-        # NOTE: target
+        # NOTE: init target params
         lower_bound, upper_bound = self.target.get_AABB(envs_idx=0)
         self.init_target_pos[2] = (upper_bound[2] - lower_bound[2]) / 2.0
+        self.target_pos = tuple(self.init_target_pos)
         self.target.set_pos(self.init_target_pos)
 
+        # NOTE: init debug visualization
         if show_viewer:
-            self._init_vis_offsets()
+            self._init_vis_debug()
+            self._init_spawn_vis()
+            self._init_success_sphere_vis()
 
         self.nan_counter = 0
 
@@ -199,7 +205,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[DEBUG_VIS ERROR] {e}")
 
-    def _init_vis_offsets(self):
+    def _init_vis_debug(self):
         """Precomputes the (num_rendered, 3) grid-offset tensor once on GPU."""
         try:
             num_rendered = min(self.num_envs, 10)
@@ -214,28 +220,103 @@ class FastFrankaEnv(VecEnv):
             ]
             self.vis_offsets = torch.tensor(offsets, dtype=torch.float32, device=self.device)
         except Exception as e:
-            logger.exception(f"[_init_vis_offsets ERROR] {e}")
+            logger.exception(f"[_init_vis_offsets ERROR] {e}") 
+
+    def _init_spawn_vis(self, n_segments: int = 32):
+        """Precomputes r_min and r_max circle line segments for the floor spawn area."""
+        try:
+            angles = torch.linspace(0, 2 * math.pi, n_segments + 1, device=self.device)
+            cos_a  = torch.cos(angles)
+            sin_a  = torch.sin(angles)
+            z      = torch.zeros(n_segments, device=self.device)
+
+            def make_segments(r):
+                starts = torch.stack([r * cos_a[:-1], r * sin_a[:-1], z], dim=1)  # (n_seg, 3)
+                ends   = torch.stack([r * cos_a[1:],  r * sin_a[1:],  z], dim=1)  # (n_seg, 3)
+                return starts, ends
+
+            self.spawn_inner_starts, self.spawn_inner_ends = make_segments(self.r_min)
+            self.spawn_outer_starts, self.spawn_outer_ends = make_segments(self.r_max)
+
+            logger.debug(f"Spawn vis initialized | r_min={self.r_min} r_max={self.r_max} segments={n_segments}")
+        except Exception as e:
+            logger.exception(f"[_init_spawn_vis ERROR] {e}")
+
+    def _init_success_sphere_vis(self, n_lat: int = 4, n_lon: int = 8):
+        """Precomputes unit-sphere wireframe segments, scaled by success_range."""
+        try:
+            r = self.success_range
+            segments_s, segments_e = [], []
+
+            # Latitude rings (horizontal circles at different heights)
+            for i in range(1, n_lat):
+                phi   = math.pi * i / n_lat          # 0 (top) → pi (bottom)
+                ring_r = r * math.sin(phi)
+                z_val  = r * math.cos(phi)
+                angles = torch.linspace(0, 2 * math.pi, n_lon + 1, device=self.device)
+                xs = ring_r * torch.cos(angles)
+                ys = ring_r * torch.sin(angles)
+                zs = torch.full_like(xs, z_val)
+                pts = torch.stack([xs, ys, zs], dim=1)  # (n_lon+1, 3)
+                segments_s.append(pts[:-1])
+                segments_e.append(pts[1:])
+
+            # Longitude lines (vertical arcs)
+            for i in range(n_lon):
+                phi_vals = torch.linspace(0, math.pi, n_lat * 4, device=self.device)
+                lon_angle = 2 * math.pi * i / n_lon
+                xs = r * torch.sin(phi_vals) * math.cos(lon_angle)
+                ys = r * torch.sin(phi_vals) * math.sin(lon_angle)
+                zs = r * torch.cos(phi_vals)
+                pts = torch.stack([xs, ys, zs], dim=1)
+                segments_s.append(pts[:-1])
+                segments_e.append(pts[1:])
+
+            self.sphere_starts = torch.cat(segments_s, dim=0)  # (total_segs, 3)
+            self.sphere_ends   = torch.cat(segments_e, dim=0)
+
+            logger.debug(f"Success sphere vis | r={r} | total segments={self.sphere_starts.shape[0]}")
+        except Exception as e:
+            logger.exception(f"[_init_success_sphere_vis ERROR] {e}")
 
     def _debug_vis(self):
         try:
-            ee_pos = (
-                self.robot.get_link("left_finger").get_pos()
-                + self.robot.get_link("right_finger").get_pos()
-            ) / 2.0
-
-            target_pos   = self.target.get_pos()
+            ee_pos = (self.robot.get_link("left_finger").get_pos() + self.robot.get_link("right_finger").get_pos()) / 2.0
+            target_pos = self.target.get_pos()
             num_rendered = self.vis_offsets.shape[0]
 
             self.scene.clear_debug_objects()
+
             for i in range(num_rendered):
-                offset = self.vis_offsets[i]       # precomputed (3,) slice — no allocation
+                offset = self.vis_offsets[i]  # (3,)
+                offset_xy = offset.clone()
+                offset_xy[2] = 0.001  # just above floor to avoid z-fighting
+                t_pos = target_pos[i] + offset
+
+                # INFO: EE → target line
                 self.scene.draw_debug_line(
                     start=target_pos[i] + offset,
                     end=ee_pos[i]       + offset,
                     color=(0, 1, 0),
-                )       
+                )
+
+                # INFO: Spawn area circles (precomputed, no alloc)
+                for s, e in zip(self.spawn_inner_starts, self.spawn_inner_ends):
+                    self.scene.draw_debug_line(start=s + offset_xy, end=e + offset_xy, color=(0.3, 0.3, 1.0))
+
+                for s, e in zip(self.spawn_outer_starts, self.spawn_outer_ends):
+                    self.scene.draw_debug_line(start=s + offset_xy, end=e + offset_xy, color=(0.0, 0.5, 1.0))
+
+                # INFO: SUCCESS SPHERE AROUND TARGET
+                # Color shifts green→red based on current distance
+                for s, e in zip(self.sphere_starts, self.sphere_ends):
+                    self.scene.draw_debug_line(
+                        start=s + t_pos,
+                        end=e   + t_pos,
+                        color=(1.0, 0.0, 0.0),
+                    )
         except Exception as e:
-            logger.exception(f"[DEBUG_VIS ERROR] {e}")
+            logger.exception(f"[DEBUG VIS ERROR] {e}") 
 
     # INFO: CORE API
     def get_observations(self):
@@ -273,7 +354,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[GET_OBS ERROR] {e}")
 
-    def _compute_reward(self, obs_tensor):
+    def _compute_reward(self, obs_tensor, actions):
         """Calculates rewards and termination conditions purely from observations."""
         try:
             ee_lin_vel = obs_tensor[:, 25:28]
@@ -287,6 +368,10 @@ class FastFrankaEnv(VecEnv):
             # Unsqueeze dist to (n_envs, 1) to match ee_lin_vel's shape for division
             directional_unit_vector = ee_to_target_vector / (dist.unsqueeze(-1) + 1e-6)
             approach_reward = (ee_lin_vel * directional_unit_vector).sum(dim=-1).clamp(min=0.0)
+
+            # TODO: Action smoothing
+            # action_delta = actions - self.last_actions
+            # smoothness_reward = - torch.norm(action_delta, dim=-1) * 0.05
 
             # NOTE: Success reward
             is_success = dist < self.success_range
@@ -347,7 +432,8 @@ class FastFrankaEnv(VecEnv):
 
             # Debug Visualization (Optional)
             if self.show_viewer:
-                self._debug_vis()
+                # self._debug_vis()
+                pass
 
             # NOTE: OBSERVATION & REWARD
             
@@ -356,7 +442,7 @@ class FastFrankaEnv(VecEnv):
             obs_tensor = obs["policy"]
 
             # Compute Rewards and Dones using the pre-fetched tensor
-            rewards, termination_dones = self._compute_reward(obs_tensor)
+            rewards, termination_dones = self._compute_reward(obs_tensor, actions)
             _check_nan(rewards, "rewards", "step")
             
             # Handle Timeouts & Total Dones
@@ -390,6 +476,10 @@ class FastFrankaEnv(VecEnv):
                 # ONLY fetch observations a second time if environments were teleported
                 # RSL-RL requires the returned 'obs' to reflect the post-reset state
                 obs = self.get_observations()
+            else:
+                # NOTE: if termination or timout happens, reset_at handles resetting last_actions. 
+                # else clone the actions to last_actions so that in next step these actions can be accessible.
+                self.last_actions = actions.clone()
             
             return obs, rewards, total_dones, infos 
             
@@ -400,7 +490,7 @@ class FastFrankaEnv(VecEnv):
     def reset_at(self, env_ids: torch.Tensor):
         try:
             n = len(env_ids)
-            # NOTE: ROBOT 
+            # NOTE: RESET ROBOT 
             # Expand 1-D init tensors to (n, dofs) / (n, 3) — all on GPU
             self.robot.set_dofs_position(
                 self.init_robot_dof_pos.unsqueeze(0).expand(n, -1),
@@ -411,7 +501,7 @@ class FastFrankaEnv(VecEnv):
                 envs_idx=env_ids,
             )
 
-            # NOTE: TARGET
+            # NOTE: RESET TARGET
             r = self.r_min + (self.r_max - self.r_min) * torch.rand(n, device=self.device)
             theta = 2 * math.pi * torch.rand(n, device=self.device)
 
@@ -419,11 +509,15 @@ class FastFrankaEnv(VecEnv):
             y = r * torch.sin(theta)
             z = torch.full((n,), self.init_target_pos[2].item(), device=self.device)
 
-            random_target_pos = torch.stack((x, y, z), dim=1)
+            self.target_pos = (x, y, z)
+            random_target_pos = torch.stack(self.target_pos, dim=1)
             self.target.set_pos(
                 random_target_pos,
                 envs_idx=env_ids,
             )
+
+            # NOTE: clear last_actions
+            self.last_actions[env_ids] = 0.0
         except Exception as e:
             logger.exception(f"[RESET_AT ERROR] env_ids={env_ids.tolist()}: {e}")
             raise
