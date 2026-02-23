@@ -79,7 +79,7 @@ class FastFrankaEnv(VecEnv):
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
                 dt=self.ctrl_dt,
-                substeps=50,
+                substeps=env_cfg["substeps"],
             ),
             rigid_options=gs.options.RigidOptions(
                 constraint_solver=gs.constraint_solver.Newton,

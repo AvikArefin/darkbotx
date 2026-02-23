@@ -77,9 +77,9 @@ train_cfg = {
     },
     
     # Logging parameters
-    "save_interval": 50,
+    "save_interval": 1000,
     "experiment_name": "franka_fast_reach",
-    "run_name": "genesis_test",
+    "run_name": "genesis_test_2",
     
     # Logging writer
     "logger": "tensorboard", # tensorboard, neptune, wandb
@@ -140,6 +140,7 @@ env_cfg = {
     "action_scales": [1.0] * 9,
     "episode_length_s": 3.0,
     "ctrl_dt": 0.01,
+    "substeps": 10,
 
     "is_debug": True,
     "logging_level": "info",
@@ -427,7 +428,7 @@ def run_manual_simulation():
     finally:
         logger.info("Manual Simulation Ended.")
 
-def rl_training():
+def rl_training(checkpoint_model_path):
     # For training, episodes are not explicitly defined since we train for a total number of timesteps.
     env = FastFrankaEnv(
         env_cfg=env_cfg, 
@@ -445,6 +446,13 @@ def rl_training():
 
     # Initialize the Runner
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device_str)
+    if checkpoint_model_path:
+        if os.path.exists(checkpoint_model_path):
+            logger.info(f"Loading checkpoint to resume training: '{checkpoint_model_path}'")
+            runner.load(checkpoint_model_path)
+        else:
+            logger.error(f"Checkpoint path '{checkpoint_model_path}' not found!")
+            exit(1)
 
     try:
         runner.learn(train_cfg["max_iterations"])
@@ -579,7 +587,7 @@ def main():
             run_manual_simulation()
         if args.training:
             logger.info("--- RL TRAINING ---")
-            rl_training()
+            rl_training(checkpoint_model_path=args.load)
         if args.inference:
             logger.info("--- INFERENCE RL MODEL WITH SIMULATION ---")
 
