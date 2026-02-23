@@ -79,7 +79,7 @@ train_cfg = {
     # Logging parameters
     "save_interval": 1000,
     "experiment_name": "franka_fast_reach",
-    "run_name": "genesis_test_2",
+    "run_name": "genesis_test_3",
     
     # Logging writer
     "logger": "tensorboard", # tensorboard, neptune, wandb
@@ -135,7 +135,7 @@ train_cfg = {
 
 env_cfg = {
     "num_envs": 4,
-    "num_obs": 12,
+    "num_obs": 38,
     "num_actions": 9,
     "action_scales": [1.0] * 9,
     "episode_length_s": 3.0,

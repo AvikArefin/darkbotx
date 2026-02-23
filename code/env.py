@@ -51,6 +51,8 @@ class FastFrankaEnv(VecEnv):
         self.ctrl_dt : float = env_cfg["ctrl_dt"]
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
 
+        self.success_range = 0.15 # WARN: This property will be deprecated in future.  
+
         # INFO: configs
         self.cfg : dict = env_cfg
         self.reward_scales : dict = reward_cfg
@@ -154,6 +156,8 @@ class FastFrankaEnv(VecEnv):
         if show_viewer:
             self._init_vis_offsets()
 
+        self.nan_counter = 0
+
     # INFO: INIT HELPERS
     def _set_pd_gains(self):
         # Set up PD gains for all joints
@@ -218,6 +222,7 @@ class FastFrankaEnv(VecEnv):
                 self.robot.get_link("left_finger").get_pos()
                 + self.robot.get_link("right_finger").get_pos()
             ) / 2.0
+
             target_pos   = self.target.get_pos()
             num_rendered = self.vis_offsets.shape[0]
 
@@ -237,66 +242,80 @@ class FastFrankaEnv(VecEnv):
         """Fetches the current state of the robot and target."""
         try:
             dofs_pos = self.robot.get_dofs_position()
+            dofs_vel = self.robot.get_dofs_velocity()
+            ee_pos = (
+                self.robot.get_link('left_finger').get_pos() 
+                + self.robot.get_link('right_finger').get_pos()
+            ) / 2.0
+            ee_quat = self.robot.get_link("hand").get_quat()
+            ee_lin_vel = self.robot.get_link("hand").get_vel()
+            ee_ang_vel = self.robot.get_link("hand").get_ang()
             target_pos = self.target.get_pos()
+            ee_to_target_vector = target_pos - ee_pos
+            dist = torch.norm(ee_to_target_vector, dim=-1, keepdim=True)
 
-            _check_nan(dofs_pos, "dofs_pos", "get_observations")
-            _check_nan(target_pos, "target_pos", "get_observations")
-            
             # Combine robot state + target state
-            obs = torch.cat([dofs_pos, target_pos], dim=-1)
-            
+            obs = torch.cat([
+            	dofs_pos,               # (n_envs, 9)
+            	dofs_vel,               # (n_envs, 9)
+            	ee_pos,                 # (n_envs, 3)
+            	ee_quat,                # (n_envs, 4)
+            	ee_lin_vel,             # (n_envs, 3)
+            	ee_ang_vel,             # (n_envs, 3)
+            	target_pos,             # (n_envs, 3)
+            	ee_to_target_vector,    # (n_envs, 3)
+            	dist,                   # (n_envs, 1)
+            ], dim=-1)                  # (n_envs, 38)
+
             _check_nan(obs, "obs", "get_observations")
 
             return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device) 
         except Exception as e:
             logger.exception(f"[GET_OBS ERROR] {e}")
 
-    def _compute_reward(self):
-        """Calculates rewards and termination conditions."""
+    def _compute_reward(self, obs_tensor):
+        """Calculates rewards and termination conditions purely from observations."""
         try:
-            termination_dones = False
-            ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2.0
-            target_pos = self.target.get_pos()
+            ee_lin_vel = obs_tensor[:, 25:28]
+            ee_to_target_vector = obs_tensor[:, 34:37]
+            dist = obs_tensor[:, 37]
 
-            _check_nan(ee_pos, "ee_pos", "_compute_reward")
-            _check_nan(target_pos, "target_pos", "_compute_reward")
+            # NOTE: Distance Reward (Linear + Exponential)
+            distance_reward = -dist + torch.exp(-10 * dist)
 
-            # Distance from robot gripper to target
-            ee_to_target_vector = ee_pos - target_pos
-            _check_nan(ee_to_target_vector, "ee_to_target_vector", "_compute_reward")
+            # NOTE: Approach bonus: reward moving toward the target
+            # Unsqueeze dist to (n_envs, 1) to match ee_lin_vel's shape for division
+            directional_unit_vector = ee_to_target_vector / (dist.unsqueeze(-1) + 1e-6)
+            approach_reward = (ee_lin_vel * directional_unit_vector).sum(dim=-1).clamp(min=0.0)
 
-            dist = torch.norm(ee_to_target_vector, dim=-1)
-            _check_nan(dist, "dist", "_compute_reward")
+            # NOTE: Success reward
+            is_success = dist < self.success_range
+            success_reward = is_success.float() * 100.0
 
-            # Horizontal (XY) displacement of target
-            # target_xy_dist = torch.norm(target_pos[:, :2] - self.init_target_pos[:2], dim=-1)
+            # NOTE: time penalty: encouraging to find optimal path
+            time_penalty = -0.5
+
+            rewards = (
+                2.0 * distance_reward
+                + 0.5 * approach_reward
+                + success_reward
+                + time_penalty
+            )
             
-            # When sliding, in most cases, it does not stay on the ground
-            # is_on_ground = target_pos[:, 2] < 0.03
-            # did_slide = (target_xy_dist > 0.02)
-
-            # print(f"------------{(target_xy_dist > 0.02)} - {is_on_ground} {is_sliding}")
-            # if did_slide:
-            #     rewards += -10.0
-
-            rewards             = -dist * dist - 0.5 
-
-            is_success          = dist < 0.1
-            rewards             = rewards + is_success.float() * 100.0
-            termination_dones   = is_success
-            
+            termination_dones = is_success
             _check_nan(rewards, "rewards", "_compute_reward")
 
             return rewards, termination_dones 
+            
         except Exception as e:
             logger.exception(f"[COMPUTE_REWARD ERROR] {e}")
-            raise
+            raise 
 
     def step(self, actions):
         try:
             _check_nan(actions, "actions", "step")
-            # Apply actions (Delta Control)
-            # current_dofs_pos = self.robot.get_dofs_position()
+            
+            # NOTE: Apply actions (Delta Control)
             dof_center = (self.dof_upper + self.dof_lower) / 2.0
             dof_span = (self.dof_upper - self.dof_lower) / 2.0
             target_dofs_pos = dof_center + actions * dof_span 
@@ -307,7 +326,7 @@ class FastFrankaEnv(VecEnv):
 
             self.robot.control_dofs_position(target_dofs_pos)
 
-            # FIX: Physics step NaN recovery
+            # WARN: Physics step NaN recovery. Need to be improved later
             try:
                 self.scene.step()
             except gs.GenesisException as physics_err:
@@ -322,15 +341,22 @@ class FastFrankaEnv(VecEnv):
                 rewards = torch.zeros(self.num_envs, device=self.device)
                 dones   = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
                 infos   = {"time_outs": dones}
+
+                self.nan_counter += 1
                 return obs, rewards, dones, infos 
-            # FIX: -----------------------------------------------------------------------------
 
             # Debug Visualization (Optional)
             if self.show_viewer:
                 self._debug_vis()
 
-            # Compute Rewards and Dones
-            rewards, termination_dones = self._compute_reward()
+            # NOTE: OBSERVATION & REWARD
+            
+            # Fetch observations once
+            obs = self.get_observations()
+            obs_tensor = obs["policy"]
+
+            # Compute Rewards and Dones using the pre-fetched tensor
+            rewards, termination_dones = self._compute_reward(obs_tensor)
             _check_nan(rewards, "rewards", "step")
             
             # Handle Timeouts & Total Dones
@@ -338,39 +364,38 @@ class FastFrankaEnv(VecEnv):
             time_outs = self.episode_length_buf >= self.max_episode_length
             total_dones = termination_dones | time_outs
             
-            # Automatic Resets
+            # NOTE: BUILD INFOS USING EXISTING TENSOR
+            dist = obs_tensor[:, 37]
+            
+            infos = {
+                "time_outs": time_outs,
+                "episode": {
+                    "nan_counter": self.nan_counter,
+                    "mean_distance": dist.mean().item(),
+                    "success_rate": (dist < self.success_range).float().mean().item(),
+                }
+            }
+
+            if self.is_monitor:
+                infos["dofs_pos"] = obs_tensor[:, 0:9]
+                infos["target_pos"] = obs_tensor[:, 31:34]
+                infos["dist"] = dist
+
+            # NOTE: HANDLE RESETS (Only update obs if necessary)
             if total_dones.any():
                 env_ids = total_dones.nonzero(as_tuple=False).flatten()
                 self.reset_at(env_ids)
                 self.episode_length_buf[env_ids] = 0
-            
-            # Fetch Final Observations
-            obs = self.get_observations()
-
-            if self.is_monitor:
-                dofs_pos = self.robot.get_dofs_position()
-                target_pos = self.target.get_pos()
-                ee_pos = (self.robot.get_link('left_finger').get_pos() + self.robot.get_link('right_finger').get_pos()) / 2.0
-                dist = torch.norm(ee_pos - target_pos, dim=-1)
-
-                _check_nan(dofs_pos, "dofs_pos (monitor)", "step")
-                _check_nan(dist, "dist (monitor)", "step")
-
-                infos = {
-                    "time_outs": time_outs,
-                    "dofs_pos": dofs_pos,
-                    "target_pos": target_pos,
-                    "dist": dist,
-                }
-            else:
-                infos = {
-                    "time_outs": time_outs
-                }
+                
+                # ONLY fetch observations a second time if environments were teleported
+                # RSL-RL requires the returned 'obs' to reflect the post-reset state
+                obs = self.get_observations()
             
             return obs, rewards, total_dones, infos 
+            
         except Exception as e:
             logger.exception(f"[STEP ERROR] {e}")
-            raise
+            raise 
 
     def reset_at(self, env_ids: torch.Tensor):
         try:
