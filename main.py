@@ -15,13 +15,10 @@ from code.logger_setup import setup_logger
 from code.monitor import Monitor
 
 # Register the custom environment with Gymnasium
-ID: str = "PandaPickAndPlace-v0"                         # <name>-v<version>
-ENTRY_POINT: str = "environment:PandaPickAndPlaceEnv"    # <filename/module>:<class_name>
-
 DEFAULT_CONTROL_MODE="ee"
 DEFAULT_DEBUG_MODE = "both"
 DEFAULT_MAX_ITERATIONS = 1500
-DEFAULT_TOTAL_EPISODES=10
+DEFAULT_TOTAL_EPISODES=10                               # WARN: DEPRECATED.
 MODEL_PATH = "models/model_panda_pickandplace.pt"
 
 # logger setup
@@ -79,10 +76,10 @@ train_cfg = {
     # Logging parameters
     "save_interval": 1000,
     "experiment_name": "franka_fast_reach",
-    "run_name": "genesis_test_3",
+    "run_name": "genesis_test_7",
     
     # Logging writer
-    "logger": "tensorboard", # tensorboard, neptune, wandb
+    "logger": "tensorboard",                    # NOTE: tensorboard, neptune, wandb
     
     # Actor
     "actor": {
@@ -92,7 +89,7 @@ train_cfg = {
         "obs_normalization": True,
         "stochastic": True,
         "init_noise_std": 1.0,
-        "noise_std_type": "scalar", # "scalar" or "log"
+        "noise_std_type": "scalar",             # NOTE: "scalar" or "log"
         "state_dependent_std": False
     },
     
@@ -114,7 +111,7 @@ train_cfg = {
         "learning_rate": 0.001,
         "num_learning_epochs": 5,
         "num_mini_batches": 4,
-        "schedule": "adaptive",
+        "schedule": "adaptive",                    # NOTE: adaptive, empirical or fixed
         
         # Value function
         "value_loss_coef": 1.0,
@@ -134,7 +131,7 @@ train_cfg = {
 }
 
 env_cfg = {
-    "num_envs": 4,
+    "num_envs": 1024,
     "num_obs": 38,
     "num_actions": 9,
     "action_scales": [1.0] * 9,

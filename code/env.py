@@ -139,9 +139,6 @@ class FastFrankaEnv(VecEnv):
         self.dof_lower = lower.to(self.device)
         self.dof_upper = upper.to(self.device)
 
-        _check_nan(self.dof_lower, "dof_lower", "__init__")
-        _check_nan(self.dof_upper, "dof_upper", "__init__")
-
         # force range
         force_lower, force_upper = self.robot.get_dofs_force_range()
         self.dof_force_upper = force_upper.to(self.device)
@@ -348,8 +345,6 @@ class FastFrankaEnv(VecEnv):
             	dist,                   # (n_envs, 1)
             ], dim=-1)                  # (n_envs, 38)
 
-            _check_nan(obs, "obs", "get_observations")
-
             return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device) 
         except Exception as e:
             logger.exception(f"[GET_OBS ERROR] {e}")
@@ -388,7 +383,6 @@ class FastFrankaEnv(VecEnv):
             )
             
             termination_dones = is_success
-            _check_nan(rewards, "rewards", "_compute_reward")
 
             return rewards, termination_dones 
             
@@ -398,16 +392,12 @@ class FastFrankaEnv(VecEnv):
 
     def step(self, actions):
         try:
-            _check_nan(actions, "actions", "step")
-            
             # NOTE: Apply actions (Delta Control)
             dof_center = (self.dof_upper + self.dof_lower) / 2.0
             dof_span = (self.dof_upper - self.dof_lower) / 2.0
             target_dofs_pos = dof_center + actions * dof_span 
-            _check_nan(target_dofs_pos, "target_dofs_pos (pre-clamp)", "step")
 
             target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
-            _check_nan(target_dofs_pos, "target_dofs_pos (clamped)", "step")
 
             self.robot.control_dofs_position(target_dofs_pos)
 
@@ -443,7 +433,6 @@ class FastFrankaEnv(VecEnv):
 
             # Compute Rewards and Dones using the pre-fetched tensor
             rewards, termination_dones = self._compute_reward(obs_tensor, actions)
-            _check_nan(rewards, "rewards", "step")
             
             # Handle Timeouts & Total Dones
             self.episode_length_buf += 1
