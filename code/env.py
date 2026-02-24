@@ -37,6 +37,7 @@ def _check_nan(tensor: torch.Tensor, name: str, context: str = "") -> bool:
 
 # Following the RSL RL API
 class FastFrankaEnv(VecEnv):
+    @torch.no_grad()
     def __init__(self, env_cfg: dict, reward_cfg: dict, robot_cfg: dict, show_viewer: bool = False):
         # INFO: RSL-RL required attributes
         self.show_viewer : bool = show_viewer
@@ -51,7 +52,7 @@ class FastFrankaEnv(VecEnv):
         self.ctrl_dt : float = env_cfg["ctrl_dt"]
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
 
-        self.success_range = 0.15 # WARN: This property will be deprecated in future.  
+        self.success_range = 0.087 # WARN: This property will be deprecated in future.  
 
         self.cfg : dict = env_cfg
         self.reward_scales : dict = reward_cfg
@@ -183,6 +184,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[_set_pd_gains ERROR] {e}")
 
+    @torch.no_grad()
     def analyze_robot(self):
         """
         Analyzes the robot's properties.
@@ -202,6 +204,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[DEBUG_VIS ERROR] {e}")
 
+    @torch.no_grad()
     def _init_vis_debug(self):
         """Precomputes the (num_rendered, 3) grid-offset tensor once on GPU."""
         try:
@@ -219,6 +222,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[_init_vis_offsets ERROR] {e}") 
 
+    @torch.no_grad()
     def _init_spawn_vis(self, n_segments: int = 32):
         """Precomputes r_min and r_max circle line segments for the floor spawn area."""
         try:
@@ -239,6 +243,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[_init_spawn_vis ERROR] {e}")
 
+    @torch.no_grad()
     def _init_success_sphere_vis(self, n_lat: int = 4, n_lon: int = 8):
         """Precomputes unit-sphere wireframe segments, scaled by success_range."""
         try:
@@ -276,6 +281,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[_init_success_sphere_vis ERROR] {e}")
 
+    @torch.no_grad()
     def _debug_vis(self):
         try:
             ee_pos = (self.robot.get_link("left_finger").get_pos() + self.robot.get_link("right_finger").get_pos()) / 2.0
@@ -316,6 +322,7 @@ class FastFrankaEnv(VecEnv):
             logger.exception(f"[DEBUG VIS ERROR] {e}") 
 
     # INFO: CORE API
+    @torch.no_grad()
     def get_observations(self):
         """Fetches the current state of the robot and target."""
         try:
@@ -331,6 +338,7 @@ class FastFrankaEnv(VecEnv):
             target_pos = self.target.get_pos()
             ee_to_target_vector = target_pos - ee_pos
             dist = torch.norm(ee_to_target_vector, dim=-1, keepdim=True)
+            gripper_width = (dofs_pos[:, 7] + dofs_pos[:, 8]).unsqueeze(-1)
 
             # Combine robot state + target state
             obs = torch.cat([
@@ -343,12 +351,14 @@ class FastFrankaEnv(VecEnv):
             	target_pos,             # (n_envs, 3)
             	ee_to_target_vector,    # (n_envs, 3)
             	dist,                   # (n_envs, 1)
-            ], dim=-1)                  # (n_envs, 38)
+                gripper_width,          # (n_envs, 1)
+            ], dim=-1)                  # (n_envs, 39)
 
             return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device) 
         except Exception as e:
             logger.exception(f"[GET_OBS ERROR] {e}")
 
+    @torch.no_grad()
     def _compute_reward(self, obs_tensor, actions):
         """Calculates rewards and termination conditions purely from observations."""
         try:
@@ -357,7 +367,7 @@ class FastFrankaEnv(VecEnv):
             dist = obs_tensor[:, 37]
 
             # NOTE: Distance Reward (Linear + Exponential)
-            distance_reward = -dist + torch.exp(-10 * dist)
+            distance_reward = -5 * dist + torch.exp(-10 * dist)
 
             # NOTE: Approach bonus: reward moving toward the target
             # Unsqueeze dist to (n_envs, 1) to match ee_lin_vel's shape for division
@@ -384,8 +394,7 @@ class FastFrankaEnv(VecEnv):
             
             termination_dones = is_success
 
-            return rewards, termination_dones 
-            
+            return rewards, termination_dones
         except Exception as e:
             logger.exception(f"[COMPUTE_REWARD ERROR] {e}")
             raise 
@@ -476,6 +485,7 @@ class FastFrankaEnv(VecEnv):
             logger.exception(f"[STEP ERROR] {e}")
             raise 
 
+    @torch.no_grad()
     def reset_at(self, env_ids: torch.Tensor):
         try:
             n = len(env_ids)
@@ -511,6 +521,7 @@ class FastFrankaEnv(VecEnv):
             logger.exception(f"[RESET_AT ERROR] env_ids={env_ids.tolist()}: {e}")
             raise
 
+    @torch.no_grad()
     def reset(self):
         # Reset all environments
         try:
