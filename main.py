@@ -74,7 +74,7 @@ train_cfg = {
     },
     
     # Logging parameters
-    "save_interval": 1000,
+    "save_interval": 40,
     "experiment_name": "franka_fast_reach",
     "run_name": "genesis_test_7",
     
