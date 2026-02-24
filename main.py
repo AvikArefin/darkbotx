@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+from datetime import datetime
 
 # RL training imports
 import torch
@@ -65,7 +66,7 @@ train_cfg = {
 
     # --- General ---
     "num_steps_per_env": 64,                            # NOTE: 16 | 24 | 48 | 64 | 96 | 128 | 256
-    "max_iterations": args.training,                             # NOTE: any int > 0
+    "max_iterations": args.training,                    # NOTE: any int > 0
     "seed": 1,                                          # NOTE: any integer
 
     # --- Observations ---
@@ -78,7 +79,9 @@ train_cfg = {
     "save_interval": 40,                                # NOTE: any int > 0 (iterations between .pt checkpoints)
     "experiment_name": "franka_fast_reach",             # NOTE: any string (parent log folder)
     "run_name": "genesis_test",                         # NOTE: any string (sub-folder for this run)
-    "logger": "tensorboard",                            # NOTE: "tensorboard" | "wandb" | "neptune"
+
+    "logger": "wandb",                                  # NOTE: "tensorboard" | "wandb" | "neptune"
+    "wandb_project": "franka-genesis-rl",               # NOTE: Dashboard project name 
 
     # --- Actor ---
     "actor": {
@@ -422,6 +425,10 @@ def run_manual_simulation():
         logger.info("Manual Simulation Ended.")
 
 def rl_training(checkpoint_model_path):
+    # INFO: run_id
+    timestamp = datetime.now().strftime("%H-%M_%d-%m-%Y")
+    train_cfg["run_name"] = f"{train_cfg['run_name']}_{timestamp}"
+
     # INFO: env setup
     env = FastFrankaEnv(
         env_cfg=env_cfg, 
@@ -430,7 +437,7 @@ def rl_training(checkpoint_model_path):
         show_viewer=False
     )
 
-    log_dir = os.path.join("logs", train_cfg["experiment_name"], train_cfg["run_name"])
+    log_dir = os.path.join("logs", train_cfg["run_name"])
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
 

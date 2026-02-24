@@ -10,6 +10,12 @@ from code.logger_setup import setup_logger
 # logger setup
 logger = setup_logger(__name__)
 
+# dummy class for wandb
+class ConfigDict(dict):
+    """A dictionary that can pass rsl_rl's .to_dict() check for Weights & Biases."""
+    def to_dict(self):
+        return dict(self)
+
 def _check_nan(tensor: torch.Tensor, name: str, context: str = "") -> bool:
     """Returns True if NaN detected, logs details."""
     if torch.isnan(tensor).any():
@@ -54,9 +60,15 @@ class FastFrankaEnv(VecEnv):
 
         self.success_range = 0.087 # WARN: This property will be deprecated in future.  
 
-        self.cfg : dict = env_cfg
+        self.env_cfg : dict = env_cfg
         self.reward_scales : dict = reward_cfg
         self.action_scales = torch.tensor(env_cfg["action_scales"], device=self.device)
+
+        self.cfg = ConfigDict({
+            "env": env_cfg,
+            "robot": robot_cfg,
+            "rewards": reward_cfg
+        })
 
         # Tracking buffers for RSL-RL logic
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
@@ -456,6 +468,9 @@ class FastFrankaEnv(VecEnv):
             
             infos = {
                 "time_outs": time_outs,
+                "episode" : {
+                    "nan_counter": self.nan_counter,
+                }
             }
 
             if self.is_monitor:
@@ -472,7 +487,6 @@ class FastFrankaEnv(VecEnv):
                 terminal_dist = dist[total_dones]  # only the envs that just ended
 
                 infos["episode"] = {
-                    "nan_counter": self.nan_counter,
 
                     # Average final distance across envs that just terminated
                     "terminal_mean_distance": terminal_dist.mean().item(),
