@@ -447,7 +447,7 @@ class FastFrankaEnv(VecEnv):
                 "episode": {
                     "nan_counter": self.nan_counter,
                     "mean_distance": dist.mean().item(),
-                    "success_rate": (dist < self.success_range).float().mean().item(),
+                    "success_rate": (dist < self.success_range).float().sum().item(),
                 }
             }
 
