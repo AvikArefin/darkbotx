@@ -77,18 +77,13 @@ class FastFrankaEnv(VecEnv):
         # == robot ==
         self.init_robot_dof_pos = torch.tensor(robot_cfg["home_pos"], device=self.device)
         self.robot = self.scene.add_entity(
-            gs.morphs.MJCF(
-                file='xml/franka_emika_panda/panda.xml', 
-                pos = (0.0, 0.0, 0.0),
-            )
+            gs.morphs.MJCF(file='xml/franka_emika_panda/panda.xml'),
         )
 
         # == target ==
         self.init_target_pos = torch.tensor([0.5, 0.5, 0.0], device=self.device)
         self.target = self.scene.add_entity(
-            gs.morphs.URDF(
-                file='assets/DarkCube/DarkCube.urdf', 
-            )
+            gs.morphs.URDF(file='assets/DarkCube/DarkCube.urdf'),
         )
 
         # build scene
@@ -229,7 +224,7 @@ class FastFrankaEnv(VecEnv):
         
         return rewards, termination_dones 
 
-    def step(self, actions):
+    def step(self, actions: torch.Tensor):
         # 1. Apply actions (Delta Control)
         # current_dofs_pos = self.robot.get_dofs_position()
         target_dofs_pos = self.dof_lower + actions * (self.dof_upper - self.dof_lower)

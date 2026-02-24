@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "genesis-world>=0.3.14",
+    "genesis-world>=0.4.0",
     "pyqt6>=6.10.2",
     "rsl-rl-lib>=4.0.1",
     "tensorboard>=2.20.0",
