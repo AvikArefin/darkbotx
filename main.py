@@ -61,73 +61,80 @@ args = get_args()
 
 # configuration
 train_cfg = {
-    "class_name": "OnPolicyRunner",
-    # General
-    "num_steps_per_env": 24,
-    "max_iterations": args.training,
-    "seed": 1,
-    
-    # Observations
+    "class_name": "OnPolicyRunner",                     # NOTE: "OnPolicyRunner" (only standard option)
+
+    # --- General ---
+    "num_steps_per_env": 64,                            # NOTE: 16 | 24 | 48 | 64 | 96 | 128 | 256
+    "max_iterations": args.training,                             # NOTE: any int > 0
+    "seed": 1,                                          # NOTE: any integer
+
+    # --- Observations ---
     "obs_groups": {
-        "actor": ["policy"], 
-        "critic": ["policy"]
+        "actor":  ["policy"],                           # NOTE: list of keys from env obs dict
+        "critic": ["policy"],                           # NOTE: can give critic extra privileged keys e.g. ["policy", "privileged"]
     },
-    
-    # Logging parameters
-    "save_interval": 40,
-    "experiment_name": "franka_fast_reach",
-    "run_name": "genesis_test_7",
-    
-    # Logging writer
-    "logger": "tensorboard",                    # NOTE: tensorboard, neptune, wandb
-    
-    # Actor
+
+    # --- Logging ---
+    "save_interval": 40,                                # NOTE: any int > 0 (iterations between .pt checkpoints)
+    "experiment_name": "franka_fast_reach",             # NOTE: any string (parent log folder)
+    "run_name": "genesis_test",                         # NOTE: any string (sub-folder for this run)
+    "logger": "tensorboard",                            # NOTE: "tensorboard" | "wandb" | "neptune"
+
+    # --- Actor ---
     "actor": {
-        "class_name": "MLPModel",
-        "hidden_dims": [256, 128, 64],
-        "activation": "elu",
-        "obs_normalization": True,
-        "stochastic": True,
-        "init_noise_std": 1.0,
-        "noise_std_type": "scalar",             # NOTE: "scalar" or "log"
-        "state_dependent_std": False
+        "class_name": "MLPModel",                       # NOTE: "MLPModel" | "RNN" (some forks)
+        "hidden_dims": [256, 128, 64],                  # NOTE: [64,64] | [256,128,64] | [512,256,128]
+        "activation": "elu",                            # NOTE: "elu" | "relu" | "tanh" | "selu"
+        "obs_normalization": True,                      # NOTE: True | False
+        "stochastic": True,                             # NOTE: True (Actor) | False (Critic)
+        "init_noise_std": 1.0,                          # NOTE: 0.5 | 0.8 | 1.0 | 1.5
+        "noise_std_type": "scalar",                     # NOTE: "scalar" | "log"
+        "state_dependent_std": False,                   # NOTE: True | False
     },
-    
-    # Critic
+
+    # --- Critic ---
     "critic": {
-        "class_name": "MLPModel",
-        "hidden_dims": [256, 128, 64],
-        "activation": "elu",
-        "obs_normalization": True,
-        "stochastic": False
+        "class_name": "MLPModel",                       # NOTE: "MLPModel" | "RNN" (some forks)
+        "hidden_dims": [256, 128, 64],                  # NOTE: [64,64] | [256,128,64] | [512,256,128]
+        "activation": "elu",                            # NOTE: "elu" | "relu" | "tanh" | "selu"
+        "obs_normalization": True,                      # NOTE: True | False
+        "stochastic": False,                            # NOTE: always False for Critic
     },
-    
-    # Algorithm
+
+    # --- Algorithm (PPO) ---
     "algorithm": {
-        "class_name": "PPO",
-        
-        # Training
-        "optimizer": "adam",
-        "learning_rate": 0.001,
-        "num_learning_epochs": 5,
-        "num_mini_batches": 4,
-        "schedule": "adaptive",                    # NOTE: adaptive, empirical or fixed
-        
-        # Value function
-        "value_loss_coef": 1.0,
-        "clip_param": 0.2,
-        "use_clipped_value_loss": True,
-        
-        # Surrogate loss    
-        "desired_kl": 0.01,
-        "entropy_coef": 0.01,
-        "gamma": 0.99,
-        "lam": 0.95,
-        "max_grad_norm": 1.0,
-        
-        # Miscellaneous
-        "normalize_advantage_per_mini_batch": False
+        "class_name": "PPO",                            # NOTE: "PPO" (only standard option)
+
+        # Optimiser
+        "optimizer": "adam",                            # NOTE: "adam" | "sgd"
+        "learning_rate": 0.001,                         # NOTE: 1e-4 | 5e-4 | 1e-3
+        "schedule": "adaptive",                         # NOTE: "adaptive" | "fixed" | "empirical"
+
+        # Data
+        "num_learning_epochs": 5,                       # NOTE: 3 | 4 | 5 | 8 | 10
+        "num_mini_batches": 4,                          # NOTE: 2 | 4 | 8
+
+        # Clipping & Loss
+        "clip_param": 0.2,                              # NOTE: 0.1 | 0.2 | 0.3
+        "use_clipped_value_loss": True,                 # NOTE: True | False
+        "value_loss_coef": 1.0,                         # NOTE: 0.5 | 1.0
+        "max_grad_norm": 1.0,                           # NOTE: 0.5 | 1.0 | 5.0
+
+        # Exploration
+        "entropy_coef": 0.01,                           # NOTE: 0.0 | 0.005 | 0.01 | 0.05
+        "desired_kl": 0.01,                             # NOTE: 0.005 | 0.01 | 0.02 | 0.05  (used by "adaptive" schedule)
+
+        # Return & Advantage
+        "gamma": 0.99,                                  # NOTE: 0.95 | 0.97 | 0.99 | 0.999
+        "lam": 0.95,                                    # NOTE: 0.9 | 0.95 | 0.99 | 1.0
+        "normalize_advantage_per_mini_batch": False,    # NOTE: True | False
     },
+
+    # --- Optional / Hidden Keys ---
+    # "resume": False,                                  # NOTE: True | False  — auto-load last checkpoint
+    # "load_run": "genesis_test_6",                     # NOTE: any run_name string  — used with resume=True
+    # "checkpoint": -1,                                 # NOTE: -1 (latest) | any iteration int
+    # "clip_rewards": 10.0,                             # NOTE: any float  — clips rewards to [-value, value]
 }
 
 env_cfg = {
@@ -139,7 +146,7 @@ env_cfg = {
     "ctrl_dt": 0.01,
     "substeps": 10,
 
-    "is_debug": True,
+    "is_debug": False,
     "logging_level": "info",
     "show_FPS": False,
     "is_monitor": False,
@@ -166,10 +173,7 @@ def run_random_simulation(debug: str):
     Runs the simulation with random actions.
     If debug is True, visualizes it using the Monitor and extracts telemetry.
     """
-    # Setup Environment
-    # show_viewer is tied to the debug flag
-
-    # config modification
+    # INFO: configuration modification
     show_sim = False
     show_monitor = False
     if debug == "both":
@@ -181,6 +185,7 @@ def run_random_simulation(debug: str):
         show_monitor = True
 
     env_cfg["num_envs"] = 1
+    env_cfg["is_debug"] = True
     env_cfg["is_monitor"] = show_monitor
     env_cfg["episode_length_s"] = 1.0       # NOTE: 1 seconds / episode for random run
 
@@ -188,7 +193,7 @@ def run_random_simulation(debug: str):
         env_cfg["logging_level"] = "debug"
         env_cfg["show_FPS"] = True
 
-    # env setup
+    # INFO: env setup
     env = FastFrankaEnv(
         env_cfg=env_cfg,
         reward_cfg=reward_cfg,
@@ -196,7 +201,7 @@ def run_random_simulation(debug: str):
         show_viewer=show_sim,
     )
 
-    # Setup GUI Monitor conditionally
+    # INFO: Setup GUI Monitor
     monitor = Monitor(sys.argv, num_envs=env.num_envs) if show_monitor else None
     
     env.reset()
@@ -210,6 +215,7 @@ def run_random_simulation(debug: str):
             if monitor and not monitor.window.isVisible():
                 break 
             
+            # INFO: Genesis-RL loop part
             # Generate Random Actions
             # Shape: (num_envs, 9) in range [0.0, 1.0] for absolute control
             random_actions = torch.rand((env.num_envs, env.num_actions), device=env.device)
@@ -217,7 +223,7 @@ def run_random_simulation(debug: str):
             # Step Environment
             obs, rewards, dones, infos = env.step(random_actions)
             
-            # Monitor Updates (Only if debug is enabled)
+            # INFO: Monitor Updates (Only if debug is enabled)
             if monitor:
                 # Extract telemetry directly from infos
                 dofs_pos = infos.get("dofs_pos")
@@ -281,16 +287,16 @@ def run_manual_simulation():
     Both finger joints (7 & 8) are driven together from slider 7.
     """
 
-    # ------------------------------------------------------------------ #
-    # 1.  Environment                                                      #
-    # ------------------------------------------------------------------ #
-    manual_env_cfg = env_cfg.copy()
-    manual_env_cfg["num_envs"] = 1
-    manual_env_cfg["episode_length_s"] = 99999.0
-    manual_env_cfg["is_monitor"] = True
+    # INFO: configuration changes
+    env_cfg["num_envs"] = 1
+    env_cfg["episode_length_s"] = 99999.0
+    env_cfg["is_monitor"] = True
+    env_cfg["is_debug"] = True
+    env_cfg["logging_level"] = "debug"
 
+    # INFO: env setup
     env = FastFrankaEnv(
-        env_cfg=manual_env_cfg,
+        env_cfg=env_cfg,
         reward_cfg=reward_cfg,
         robot_cfg=robot_cfg,
         show_viewer=True,
@@ -298,9 +304,7 @@ def run_manual_simulation():
 
     env.reset()
 
-    # ------------------------------------------------------------------ #
-    # 2.  Strict Panda joint limits used for sliders                      #
-    # ------------------------------------------------------------------ #
+    # Strict Panda joint limits used for sliders
     panda_lower = torch.tensor(
         [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973, 0.0000, 0.0000],
         device=env.device,
@@ -311,9 +315,7 @@ def run_manual_simulation():
     )
     panda_range = panda_upper - panda_lower  # element-wise span
 
-    # ------------------------------------------------------------------ #
-    # 3.  Monitor + slider initialisation                                 #
-    # ------------------------------------------------------------------ #
+    # INFO: Monitor + slider initialisation
     monitor = Monitor(sys.argv, num_envs=env.num_envs)
     home_pos = torch.tensor(robot_cfg["home_pos"], device=env.device)  # shape: (9,)
 
@@ -329,15 +331,13 @@ def run_manual_simulation():
             # Initialise visual position to the home pose
             slider.set(home_pos[i].item())
 
-    # ------------------------------------------------------------------ #
-    # 4.  Physics / GUI loop                                              #
-    # ------------------------------------------------------------------ #
+    # INFO: Physics / GUI loop
     total_rewards = [0.0] * env.num_envs
 
     def physics_loop():
         nonlocal total_rewards
 
-        # --- A.  Build action tensor from slider physical values -------- #
+        # INFO: Build action tensor from slider physical values
         action = torch.zeros((env.num_envs, env.num_actions), device=env.device)
 
         for env_idx in range(env.num_envs):
@@ -383,13 +383,13 @@ def run_manual_simulation():
             f2.slider.setValue(g_slider.slider.value())
             f2.label.setText(f"{f2.name}: {g_phys:.4f}")
 
-        # --- B.  Step simulation ---------------------------------------- #
+        # INFO: simulation
         obs, rewards, dones, infos = env.step(action)
 
         target_pos = infos.get("target_pos")  # tensor (num_envs, 3), present when show_viewer=True
         dist       = infos.get("dist")        # tensor (num_envs,),   present when show_viewer=True
 
-        # --- C.  Update Monitor UI -------------------------------------- #
+        # INFO: Update Monitor UI
         for i in range(env.num_envs):
             panel = monitor.env_panels[i]
 
@@ -409,10 +409,6 @@ def run_manual_simulation():
             if dones[i]:
                 total_rewards[i] = 0.0
                 panel.reset_plot()
-
-    # ------------------------------------------------------------------ #
-    # 5.  Start event loop                                                #
-    # ------------------------------------------------------------------ #
     try:
         logger.info("--- GUI: MANUAL SIMULATION STARTED ---")
         monitor.start_manual_loop(physics_loop)
@@ -426,7 +422,7 @@ def run_manual_simulation():
         logger.info("Manual Simulation Ended.")
 
 def rl_training(checkpoint_model_path):
-    # For training, episodes are not explicitly defined since we train for a total number of timesteps.
+    # INFO: env setup
     env = FastFrankaEnv(
         env_cfg=env_cfg, 
         reward_cfg=reward_cfg, 
@@ -441,7 +437,7 @@ def rl_training(checkpoint_model_path):
     # Format device string safely (e.g., "cuda:0" or "cpu")
     device_str = f"{env.device.type}:0" if env.device.type in ["cuda", "mps"] else "cpu:0"
 
-    # Initialize the Runner
+    # INFO: Initialize the Runner
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device_str)
     if checkpoint_model_path:
         if os.path.exists(checkpoint_model_path):
@@ -451,6 +447,7 @@ def rl_training(checkpoint_model_path):
             logger.error(f"Checkpoint path '{checkpoint_model_path}' not found!")
             exit(1)
 
+    # INFO: start training
     try:
         runner.learn(train_cfg["max_iterations"])
     except KeyboardInterrupt:
@@ -462,7 +459,7 @@ def rl_training(checkpoint_model_path):
         logger.info(f"RL TRAINING STOPPED! model saved to: {MODEL_PATH}")
 
 def inference_model(model_path : str, debug : str):
-    # config modification
+    # INFO: config modification
     show_sim = False
     show_monitor = False
     if debug == "both":
@@ -480,6 +477,7 @@ def inference_model(model_path : str, debug : str):
         env_cfg["logging_level"] = "debug"
         env_cfg["show_FPS"] = True
 
+    # INFO: env setup
     env = FastFrankaEnv(
         env_cfg=env_cfg, 
         reward_cfg=reward_cfg, 
@@ -492,7 +490,7 @@ def inference_model(model_path : str, debug : str):
 
     os.makedirs(log_dir, exist_ok=True)
     
-    # Initialize the Runner and load the model
+    # INFO: Initialize the Runner and load the model
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=device_str)
 
     logger.info(f"Loading model: {model_path}")
@@ -502,7 +500,7 @@ def inference_model(model_path : str, debug : str):
     # Get the inference policy
     policy = runner.get_inference_policy(device=device_str)
 
-    # --- MONITOR SETUP ---
+    # INFO: MONITOR SETUP
     # Only initialize if the --monitor arg was passed
     monitor = Monitor(sys.argv, num_envs=env.num_envs) if show_monitor else None
     total_rewards = [0.0] * env.num_envs
@@ -515,6 +513,7 @@ def inference_model(model_path : str, debug : str):
             if monitor and not monitor.window.isVisible():
                 break
 
+            # INFO: INFERENCE LOOP
             # Safely extract the tensor if obs is the dictionary we created
             obs_tensor = obs["policy"] if isinstance(obs, dict) else obs
             
@@ -524,7 +523,7 @@ def inference_model(model_path : str, debug : str):
             # Step the environment
             obs, rewards, dones, infos = env.step(actions)
 
-            # --- MONITOR UPDATES ---
+            # INFO: MONITOR UPDATES
             if monitor:
                 # Extract telemetry directly from infos
                 dofs_pos = infos.get("dofs_pos")
@@ -560,7 +559,6 @@ def inference_model(model_path : str, debug : str):
                 
                 # Process GUI Events (Keep window responsive)
                 monitor.update_gui() 
-
     except KeyboardInterrupt:
         logger.warning("\nCtrl + C received! Cleaning up resources ...")
     except Exception as e:
@@ -573,7 +571,7 @@ def inference_model(model_path : str, debug : str):
 def main():
     """Main function to train and evaluate the model."""
     
-    # different modes: --manual, --random, --training
+    # INFO: different modes: --manual, --random, --training
     try:
         if args.random:
             logger.info("--- GUI: RANDOM ACTION SIMULATION ---")

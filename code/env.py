@@ -37,9 +37,9 @@ def _check_nan(tensor: torch.Tensor, name: str, context: str = "") -> bool:
 
 # Following the RSL RL API
 class FastFrankaEnv(VecEnv):
-    @torch.inference_mode()
+    @torch.no_grad()
     def __init__(self, env_cfg: dict, reward_cfg: dict, robot_cfg: dict, show_viewer: bool = False):
-        # INFO: RSL-RL required attributes
+        # INFO: __INIT__ RSL-RL 
         self.show_viewer : bool = show_viewer
         self.is_monitor : bool = env_cfg["is_monitor"]
         self.num_envs : int = env_cfg["num_envs"] 
@@ -63,7 +63,7 @@ class FastFrankaEnv(VecEnv):
 
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, device=self.device)
 
-        # INFO: SETUP GENESIS ENGINE
+        # INFO: __INIT__ GENESIS ENGINE
         gs.init(
             seed=None,
             precision="32",
@@ -106,10 +106,11 @@ class FastFrankaEnv(VecEnv):
             show_viewer=show_viewer,
         )
         
-        # NOTE: add plane to the scene
+        # INFO: ADD ELEMENTS TO THE SCENE
+        # add plane to the scene
         self.scene.add_entity(gs.morphs.Plane())
 
-        # NOTE: add robot to the scene
+        # add robot to the scene
         self.init_robot_dof_pos = torch.tensor(robot_cfg["home_pos"], device=self.device)
         self.robot = self.scene.add_entity(
             gs.morphs.MJCF(
@@ -117,8 +118,11 @@ class FastFrankaEnv(VecEnv):
                 pos = (0.0, 0.0, 0.0),
             )
         )
+        self.left_finger = self.robot.get_link("left_finger")
+        self.right_finger = self.robot.get_link("right_finger")
+        self.hand_link = self.robot.get_link("hand")
 
-        # NOTE: add target to the scene
+        # add target to the scene
         self.init_target_pos = torch.tensor([0.5, 0.5, 0.0], device=self.device)
         self.r_min, self.r_max = 0.3, 0.8
         self.target = self.scene.add_entity(
@@ -146,7 +150,6 @@ class FastFrankaEnv(VecEnv):
         self.dof_force_lower = force_lower.to(self.device)
 
         self._set_pd_gains()
-        # self.analyze_robot()
 
         # NOTE: init target params
         lower_bound, upper_bound = self.target.get_AABB(envs_idx=0)
@@ -156,6 +159,7 @@ class FastFrankaEnv(VecEnv):
 
         # NOTE: init debug visualization
         if show_viewer:
+            # self.analyze_robot()
             self._init_vis_debug()
             self._init_spawn_vis()
             self._init_success_sphere_vis()
@@ -184,7 +188,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[_set_pd_gains ERROR] {e}")
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def analyze_robot(self):
         """
         Analyzes the robot's properties.
@@ -204,7 +208,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[DEBUG_VIS ERROR] {e}")
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def _init_vis_debug(self):
         """Precomputes the (num_rendered, 3) grid-offset tensor once on GPU."""
         try:
@@ -222,7 +226,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[_init_vis_offsets ERROR] {e}") 
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def _init_spawn_vis(self, n_segments: int = 32):
         """Precomputes r_min and r_max circle line segments for the floor spawn area."""
         try:
@@ -243,7 +247,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[_init_spawn_vis ERROR] {e}")
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def _init_success_sphere_vis(self, n_lat: int = 4, n_lon: int = 8):
         """Precomputes unit-sphere wireframe segments, scaled by success_range."""
         try:
@@ -281,7 +285,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[_init_success_sphere_vis ERROR] {e}")
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def _debug_vis(self):
         try:
             ee_pos = (self.robot.get_link("left_finger").get_pos() + self.robot.get_link("right_finger").get_pos()) / 2.0
@@ -329,12 +333,12 @@ class FastFrankaEnv(VecEnv):
             dofs_pos = self.robot.get_dofs_position()
             dofs_vel = self.robot.get_dofs_velocity()
             ee_pos = (
-                self.robot.get_link('left_finger').get_pos() 
-                + self.robot.get_link('right_finger').get_pos()
+                self.left_finger.get_pos() 
+                + self.right_finger.get_pos()
             ) / 2.0
-            ee_quat = self.robot.get_link("hand").get_quat()
-            ee_lin_vel = self.robot.get_link("hand").get_vel()
-            ee_ang_vel = self.robot.get_link("hand").get_ang()
+            ee_quat = self.hand_link.get_quat()
+            ee_lin_vel = self.hand_link.get_vel()
+            ee_ang_vel = self.hand_link.get_ang()
             target_pos = self.target.get_pos()
             ee_to_target_vector = target_pos - ee_pos
             dist = torch.norm(ee_to_target_vector, dim=-1, keepdim=True)
@@ -358,7 +362,7 @@ class FastFrankaEnv(VecEnv):
         except Exception as e:
             logger.exception(f"[GET_OBS ERROR] {e}")
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def _compute_reward(self, obs_tensor, actions):
         """Calculates rewards and termination conditions purely from observations."""
         try:
@@ -431,11 +435,10 @@ class FastFrankaEnv(VecEnv):
 
             # Debug Visualization (Optional)
             if self.show_viewer:
-                # self._debug_vis()
+                self._debug_vis()
                 pass
 
             # NOTE: OBSERVATION & REWARD
-            
             # Fetch observations once
             obs = self.get_observations()
             obs_tensor = obs["policy"]
@@ -453,11 +456,6 @@ class FastFrankaEnv(VecEnv):
             
             infos = {
                 "time_outs": time_outs,
-                "episode": {
-                    "nan_counter": self.nan_counter,
-                    "mean_distance": dist.mean().item(),
-                    "success_rate": (dist < self.success_range).float().sum().item(),
-                }
             }
 
             if self.is_monitor:
@@ -470,6 +468,18 @@ class FastFrankaEnv(VecEnv):
                 env_ids = total_dones.nonzero(as_tuple=False).flatten()
                 self.reset_at(env_ids)
                 self.episode_length_buf[env_ids] = 0
+
+                terminal_dist = dist[total_dones]  # only the envs that just ended
+
+                infos["episode"] = {
+                    "nan_counter": self.nan_counter,
+
+                    # Average final distance across envs that just terminated
+                    "terminal_mean_distance": terminal_dist.mean().item(),
+
+                    # Breakdown: how many ended from success vs timeout
+                    "success_rate": (terminal_dist < self.success_range).float().mean().item(),
+                }
                 
                 # ONLY fetch observations a second time if environments were teleported
                 # RSL-RL requires the returned 'obs' to reflect the post-reset state
@@ -485,7 +495,7 @@ class FastFrankaEnv(VecEnv):
             logger.exception(f"[STEP ERROR] {e}")
             raise 
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def reset_at(self, env_ids: torch.Tensor):
         try:
             n = len(env_ids)
@@ -521,7 +531,7 @@ class FastFrankaEnv(VecEnv):
             logger.exception(f"[RESET_AT ERROR] env_ids={env_ids.tolist()}: {e}")
             raise
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def reset(self):
         # Reset all environments
         try:
