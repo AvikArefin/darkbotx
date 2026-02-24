@@ -322,7 +322,7 @@ class FastFrankaEnv(VecEnv):
             logger.exception(f"[DEBUG VIS ERROR] {e}") 
 
     # INFO: CORE API
-    @torch.inference_mode()
+    @torch.no_grad()
     def get_observations(self):
         """Fetches the current state of the robot and target."""
         try:
