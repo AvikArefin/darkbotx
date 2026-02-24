@@ -16,6 +16,8 @@ class ConfigDict(dict):
     def to_dict(self):
         return dict(self)
 
+
+@torch.inference_mode()
 def _check_nan(tensor: torch.Tensor, name: str, context: str = "") -> bool:
     """Returns True if NaN detected, logs details."""
     if torch.isnan(tensor).any():
@@ -58,7 +60,7 @@ class FastFrankaEnv(VecEnv):
         self.ctrl_dt : float = env_cfg["ctrl_dt"]
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
 
-        self.success_range = 0.087 # WARN: This property will be deprecated in future.  
+        self.success_range : torch.Tensor = torch.tensor( 0.087, device=self.device) # WARN: This property will be deprecated in future.  
 
         self.env_cfg : dict = env_cfg
         self.reward_scales : dict = reward_cfg
@@ -155,6 +157,8 @@ class FastFrankaEnv(VecEnv):
         lower, upper = self.robot.get_dofs_limit()
         self.dof_lower = lower.to(self.device)
         self.dof_upper = upper.to(self.device)
+        self.dof_center = ((self.dof_upper + self.dof_lower) / 2.0).to(self.device)
+        self.dof_span = ((self.dof_upper - self.dof_lower) / 2.0).to(self.device)
 
         # force range
         force_lower, force_upper = self.robot.get_dofs_force_range()
@@ -178,7 +182,10 @@ class FastFrankaEnv(VecEnv):
 
         self.nan_counter = 0
 
+        self.obs_buf = torch.zeros(self.num_envs, 39, device=self.device, dtype=torch.float32)
+
     # INFO: INIT HELPERS
+    @torch.inference_mode()
     def _set_pd_gains(self):
         # Set up PD gains for all joints
         # kp: how hard it pulls toward the target (stiffness)
@@ -356,73 +363,69 @@ class FastFrankaEnv(VecEnv):
             dist = torch.norm(ee_to_target_vector, dim=-1, keepdim=True)
             gripper_width = (dofs_pos[:, 7] + dofs_pos[:, 8]).unsqueeze(-1)
 
-            # Combine robot state + target state
-            obs = torch.cat([
-            	dofs_pos,               # (n_envs, 9)
-            	dofs_vel,               # (n_envs, 9)
-            	ee_pos,                 # (n_envs, 3)
-            	ee_quat,                # (n_envs, 4)
-            	ee_lin_vel,             # (n_envs, 3)
-            	ee_ang_vel,             # (n_envs, 3)
-            	target_pos,             # (n_envs, 3)
-            	ee_to_target_vector,    # (n_envs, 3)
-            	dist,                   # (n_envs, 1)
-                gripper_width,          # (n_envs, 1)
-            ], dim=-1)                  # (n_envs, 39)
+        # Combine robot state + target state
+        torch.cat([
+            dofs_pos,               # (n_envs, 9)
+            dofs_vel,               # (n_envs, 9)
+            ee_pos,                 # (n_envs, 3)
+            ee_quat,                # (n_envs, 4)
+            ee_lin_vel,             # (n_envs, 3)
+            ee_ang_vel,             # (n_envs, 3)
+            target_pos,             # (n_envs, 3)
+            ee_to_target_vector,    # (n_envs, 3)
+            dist,                   # (n_envs, 1)
+            gripper_width,          # (n_envs, 1)
+        ], dim=-1, out=self.obs_buf)                  # (n_envs, 39)
 
-            return TensorDict({"policy": obs}, batch_size=[self.num_envs], device=self.device) 
-        except Exception as e:
-            logger.exception(f"[GET_OBS ERROR] {e}")
+        return TensorDict({"policy": self.obs_buf.clone()}, batch_size=[self.num_envs], device=self.device) 
 
-    @torch.no_grad()
-    def _compute_reward(self, obs_tensor, actions):
+    @torch.compile(fullgraph=True, dynamic=False)
+    def _compute_reward(self, obs_tensor: torch.Tensor, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Calculates rewards and termination conditions purely from observations."""
-        try:
-            ee_lin_vel = obs_tensor[:, 25:28]
-            ee_to_target_vector = obs_tensor[:, 34:37]
-            dist = obs_tensor[:, 37]
+        ee_lin_vel = obs_tensor[:, 25:28]
+        ee_to_target_vector = obs_tensor[:, 34:37]
+        dist = obs_tensor[:, 37]
 
-            # NOTE: Distance Reward (Linear + Exponential)
-            distance_reward = -5 * dist + torch.exp(-10 * dist)
+        # NOTE: Distance Reward (Linear + Exponential)
+        distance_reward = -5 * dist + torch.exp(-10 * dist)
 
-            # NOTE: Approach bonus: reward moving toward the target
-            # Unsqueeze dist to (n_envs, 1) to match ee_lin_vel's shape for division
-            directional_unit_vector = ee_to_target_vector / (dist.unsqueeze(-1) + 1e-6)
-            approach_reward = (ee_lin_vel * directional_unit_vector).sum(dim=-1).clamp(min=0.0)
+        # NOTE: Approach bonus: reward moving toward the target
+        # Unsqueeze dist to (n_envs, 1) to match ee_lin_vel's shape for division
+        directional_unit_vector = ee_to_target_vector / (dist.unsqueeze(-1) + 1e-6)
+        approach_reward = (
+            (ee_lin_vel * directional_unit_vector).sum(dim=-1).clamp(min=0.0)
+        )
 
-            # TODO: Action smoothing
-            # action_delta = actions - self.last_actions
-            # smoothness_reward = - torch.norm(action_delta, dim=-1) * 0.05
+        # TODO: Action smoothing
+        # action_delta = actions - self.last_actions
+        # smoothness_reward = - torch.norm(action_delta, dim=-1) * 0.05
 
-            # NOTE: Success reward
-            is_success = dist < self.success_range
-            success_reward = is_success.float() * 100.0
+        # NOTE: Success reward
+        is_success = dist < self.success_range
+        success_reward = is_success.float() * 100.0
 
-            # NOTE: time penalty: encouraging to find optimal path
-            time_penalty = -0.5
+        # NOTE: time penalty: encouraging to find optimal path
+        time_penalty = -0.5
 
-            rewards = (
-                2.0 * distance_reward
-                + 0.5 * approach_reward
-                + success_reward
-                + time_penalty
-            )
-            
-            termination_dones = is_success
+        rewards = (
+            2.0 * distance_reward
+            + 0.5 * approach_reward
+            + success_reward
+            + time_penalty
+        )
 
-            return rewards, termination_dones
-        except Exception as e:
-            logger.exception(f"[COMPUTE_REWARD ERROR] {e}")
-            raise 
+        termination_dones = is_success
 
-    def step(self, actions):
+        return rewards, termination_dones
+
+    def step(self, actions: torch.Tensor):
         try:
             # NOTE: Apply actions (Delta Control)
-            dof_center = (self.dof_upper + self.dof_lower) / 2.0
-            dof_span = (self.dof_upper - self.dof_lower) / 2.0
-            target_dofs_pos = dof_center + actions * dof_span 
-
-            target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
+            target_dofs_pos = torch.clamp(
+                self.dof_center + actions * self.dof_span,            # Or, input = torch.addcmul(self.dof_center, actions, self.dof_span) # same thing.
+                self.dof_lower,
+                self.dof_upper,
+            )
 
             self.robot.control_dofs_position(target_dofs_pos)
 
@@ -439,11 +442,11 @@ class FastFrankaEnv(VecEnv):
                 self.episode_length_buf.zero_()
                 obs = self.get_observations()
                 rewards = torch.zeros(self.num_envs, device=self.device)
-                dones   = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
-                infos   = {"time_outs": dones}
+                dones = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
+                infos = {"time_outs": dones}
 
                 self.nan_counter += 1
-                return obs, rewards, dones, infos 
+                return obs, rewards, dones, infos
 
             # Debug Visualization (Optional)
             if self.show_viewer:
@@ -541,6 +544,7 @@ class FastFrankaEnv(VecEnv):
 
             # NOTE: clear last_actions
             self.last_actions[env_ids] = 0.0
+            self.obs_buf[env_ids] = 0.0 
         except Exception as e:
             logger.exception(f"[RESET_AT ERROR] env_ids={env_ids.tolist()}: {e}")
             raise
