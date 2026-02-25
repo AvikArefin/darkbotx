@@ -176,9 +176,10 @@ class FastFrankaEnv(VecEnv):
         # NOTE: init debug visualization
         if show_viewer:
             # self.analyze_robot()
-            self._init_vis_debug()
-            self._init_spawn_vis()
-            self._init_success_sphere_vis()
+            # self._init_vis_debug()
+            # self._init_spawn_vis()
+            # self._init_success_sphere_vis()
+            pass
 
         self.nan_counter = 0
 
@@ -348,20 +349,19 @@ class FastFrankaEnv(VecEnv):
     @torch.no_grad()
     def get_observations(self):
         """Fetches the current state of the robot and target."""
-        try:
-            dofs_pos = self.robot.get_dofs_position()
-            dofs_vel = self.robot.get_dofs_velocity()
-            ee_pos = (
-                self.left_finger.get_pos() 
-                + self.right_finger.get_pos()
-            ) / 2.0
-            ee_quat = self.hand_link.get_quat()
-            ee_lin_vel = self.hand_link.get_vel()
-            ee_ang_vel = self.hand_link.get_ang()
-            target_pos = self.target.get_pos()
-            ee_to_target_vector = target_pos - ee_pos
-            dist = torch.norm(ee_to_target_vector, dim=-1, keepdim=True)
-            gripper_width = (dofs_pos[:, 7] + dofs_pos[:, 8]).unsqueeze(-1)
+        dofs_pos = self.robot.get_dofs_position()
+        dofs_vel = self.robot.get_dofs_velocity()
+        ee_pos = (
+            self.left_finger.get_pos() 
+            + self.right_finger.get_pos()
+        ) / 2.0
+        ee_quat = self.hand_link.get_quat()
+        ee_lin_vel = self.hand_link.get_vel()
+        ee_ang_vel = self.hand_link.get_ang()
+        target_pos = self.target.get_pos()
+        ee_to_target_vector = target_pos - ee_pos
+        dist = torch.norm(ee_to_target_vector, dim=-1, keepdim=True)
+        gripper_width = (dofs_pos[:, 7] + dofs_pos[:, 8]).unsqueeze(-1)
 
         # Combine robot state + target state
         torch.cat([
