@@ -52,6 +52,7 @@ def get_args():
     
     parser.add_argument("--load", nargs="?", const=MODEL_PATH, type=str, default=None, help="Pass model to -i & -t. default: %(const)s")
     parser.add_argument("--control_mode", nargs="?", const=DEFAULT_CONTROL_MODE, type=str, default=DEFAULT_CONTROL_MODE, help="PyBullet Env Control Mode. default: %(const)s")
+    parser.add_argument("--crash", type=str, help="reproducing crash from saved debug")
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -145,7 +146,7 @@ env_cfg = {
     "num_envs": 1024,
     "num_obs": 39,
     "num_actions": 9,
-    "action_scales": [1.0] * 9,
+    "action_scales": [1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.3, 0.05, 0.05],
     "episode_length_s": 3.0,
     "ctrl_dt": 0.01,
     "substeps": 10,
@@ -463,7 +464,10 @@ def rl_training(checkpoint_model_path):
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")
     finally:
-        runner.save(MODEL_PATH)
+        try:
+            runner.save(MODEL_PATH)
+        except Exception:
+            pass
         logger.info(f"RL TRAINING STOPPED! model saved to: {MODEL_PATH}")
 
 def inference_model(model_path : str, debug : str):
@@ -576,6 +580,111 @@ def inference_model(model_path : str, debug : str):
             monitor.close()
         logger.info(f"INFERENCE STOPPED! model={model_path}")
 
+def reproduce_crash(crash_file: str):
+    """
+    Runs 1 environment and sequentially tests every action from the crashed batch.
+    """
+    if not os.path.exists(crash_file):
+        logger.error(f"Crash file not found: {crash_file}")
+        return
+        
+    logger.info(f"Loading crash data from: {crash_file}")
+    crash_data = torch.load(crash_file)
+    
+    # Extract actions and count them
+    crash_actions = crash_data["actions"]
+    num_actions = crash_actions.shape[0]
+    logger.info(f"Loaded {num_actions} actions to test.")
+
+    # INFO: Force simulation to exactly 1 environment
+    show_sim = True
+    show_monitor = True
+
+    env_cfg["num_envs"] = 1 
+    env_cfg["is_debug"] = True
+    env_cfg["is_monitor"] = show_monitor
+    env_cfg["episode_length_s"] = 10.0   
+
+    if show_sim or show_monitor:
+        env_cfg["logging_level"] = "debug"
+        env_cfg["show_FPS"] = True
+
+    # INFO: env setup
+    env = FastFrankaEnv(
+        env_cfg=env_cfg,
+        reward_cfg=reward_cfg,
+        robot_cfg=robot_cfg,
+        show_viewer=show_sim,
+    )
+
+    # Move the entire batch of actions to the environment's device
+    crash_actions = crash_actions.to(env.device)
+
+    # INFO: Setup GUI Monitor
+    monitor = Monitor(sys.argv, num_envs=env.num_envs) if show_monitor else None
+    
+    env.reset()
+    total_rewards = [0.0] * env.num_envs
+
+    logger.warning(">>> TESTING CRASH ACTIONS SEQUENTIALLY <<<")
+
+    action_idx = 0  # Track which action we are currently testing
+
+    try:
+        while True:
+            # If in debug mode, break the loop if the user closes the window
+            if monitor and not monitor.window.isVisible():
+                break 
+            
+            # --- THE LOOP LOGIC ---
+            # Grab one single action from the batch and shape it to (1, 9)
+            current_action = crash_actions[action_idx].unsqueeze(0)
+            
+            # Print the index BEFORE stepping so if it crashes, we know exactly who did it
+            logger.debug(f"Testing action index: {action_idx}")
+            
+            # Step the environment
+            obs, rewards, dones, infos = env.step(current_action)
+            
+            # Move to the next action. If we reach the end, loop back to the beginning.
+            action_idx = (action_idx + 1) % num_actions
+            # ----------------------
+            
+            # INFO: Monitor Updates
+            if monitor:
+                dofs_pos = infos.get("dofs_pos")
+                target_pos = infos.get("target_pos")
+                dist = infos.get("dist")
+
+                # We only have 1 panel now, so i is always 0
+                panel = monitor.env_panels[0]
+                total_rewards[0] += rewards[0].item()
+                panel.update_plot(total_rewards[0])
+
+                if dofs_pos is not None:
+                    panel.update_joints(dofs_pos[0].tolist())
+
+                if target_pos is not None and dist is not None:
+                    target_p = target_pos[0].tolist()
+                    d = dist[0].item()
+                    cube_text = f"XYZ: [{target_p[0]:.2f}, {target_p[1]:.2f}, {target_p[2]:.2f}]\ndist: {d:.4f}"
+                    panel.set_cube_label(cube_text)
+
+                if dones[0]:
+                    total_rewards[0] = 0.0
+                    panel.reset_plot()
+                
+                monitor.update_gui()
+    except KeyboardInterrupt:
+        logger.info("Simulation interrupted by user.")
+    except Exception as e:
+        logger.exception(f"CRASH REPRODUCED at action index {action_idx}! Error: {e}")
+        logger.error(f"The exact action tensor that broke it: {current_action}")
+    finally:
+        if monitor:
+            monitor.close()
+        logger.info("Crash Reproduction Ended.")
+
 def main():
     """Main function to train and evaluate the model."""
     
@@ -598,7 +707,10 @@ def main():
                 logger.info(f"Inferencing '{args.load}' model")
                 inference_model(model_path=args.load, debug=args.debug)
             else:
-                logger.exception("No trained model Found!")
+                logger.error("No trained model Found!")
+        if args.crash and os.path.exists(args.crash):
+            logger.info("--- CRASH REPRODUCE ---")
+            reproduce_crash(args.crash)
     except KeyboardInterrupt:
         logger.warning("\nCtrl + C received! Cleaning up resources ...")
     except Exception as e:

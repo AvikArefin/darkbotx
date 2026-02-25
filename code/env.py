@@ -10,6 +10,18 @@ from code.logger_setup import setup_logger
 # logger setup
 logger = setup_logger(__name__)
 
+JOINT_NAMES = [
+        "joint1",
+        "joint2",
+        "joint3",
+        "joint4",
+        "joint5",
+        "joint6",
+        "joint7",
+        "finger_joint1",
+        "finger_joint2",
+    ]
+
 # dummy class for wandb
 class ConfigDict(dict):
     """A dictionary that can pass rsl_rl's .to_dict() check for Weights & Biases."""
@@ -226,7 +238,7 @@ class FastFrankaEnv(VecEnv):
                 logger.debug(f"  COM orientation (quat): {link.inertial_quat}")
             logger.debug("---------------------------------\n")
         except Exception as e:
-            logger.exception(f"[DEBUG_VIS ERROR] {e}")
+            logger.exception(f"[ANALYZE ROBOT ERROR] {e}")
 
     @torch.no_grad()
     def _init_vis_debug(self):
@@ -421,11 +433,17 @@ class FastFrankaEnv(VecEnv):
     def step(self, actions: torch.Tensor):
         try:
             # NOTE: Apply actions (Delta Control)
-            target_dofs_pos = torch.clamp(
-                self.dof_center + actions * self.dof_span,            # Or, input = torch.addcmul(self.dof_center, actions, self.dof_span) # same thing.
-                self.dof_lower,
-                self.dof_upper,
-            )
+            delta_actions = (actions - self.last_actions) * self.action_scales
+            max_deltas_per_joint = delta_actions.abs().max(dim=0)[0]
+            mean_deltas_per_joint = delta_actions.abs().mean(dim=0)
+            
+            self.last_actions = actions.clone()
+
+            dof_center = (self.dof_upper + self.dof_lower) / 2.0
+            dof_span = (self.dof_upper - self.dof_lower) / 2.0
+            target_dofs_pos = dof_center + actions * self.action_scales * dof_span 
+
+            target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
 
             self.robot.control_dofs_position(target_dofs_pos)
 
@@ -433,24 +451,60 @@ class FastFrankaEnv(VecEnv):
             try:
                 self.scene.step()
             except gs.GenesisException as physics_err:
+                self.nan_counter += 1
+                has_nans = torch.isnan(target_dofs_pos).any().item()
+                has_infs = torch.isinf(target_dofs_pos).any().item()
+
                 logger.exception(
                     f"[PHYSICS NaN] Solver diverged: {physics_err}. "
-                    f"Resetting all {self.num_envs} envs and continuing."
+                    f"Resetting all {self.num_envs} envs and continuing.\n"
+                    f"--- target_dofs_pos Diagnostics ---\n"
+                    f"Contains NaNs: {has_nans} | Contains Infs: {has_infs}\n"
                 )
+
+                control_force = self.robot.get_dofs_control_force()
+                max_control_force = control_force.abs().max(dim=0)[0]
+                mean_control_force = control_force.abs().mean(dim=0)
+
                 all_ids = torch.arange(self.num_envs, device=self.device)
                 self.reset_at(all_ids)
                 self.episode_length_buf.zero_()
                 obs = self.get_observations()
                 rewards = torch.zeros(self.num_envs, device=self.device)
-                dones = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
-                infos = {"time_outs": dones}
+                dones   = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
 
-                self.nan_counter += 1
-                return obs, rewards, dones, infos
+                infos   = {
+                    "time_outs": dones,
+                    "episode": dict()
+                }
+
+                for i in range(9):
+                    joint_name = JOINT_NAMES[i]
+
+                    infos["episode"][f"delta_action_max/{joint_name}"] = max_deltas_per_joint[i].item()
+                    infos["episode"][f"delta_action_mean/{joint_name}"] = mean_deltas_per_joint[i].item() 
+
+                    # Control Torques/Forces (What the PD motors are actually outputting)
+                    infos["episode"][f"control_force_max/{joint_name}"] = max_control_force[i].item()
+                    infos["episode"][f"control_force_mean/{joint_name}"] = mean_control_force[i].item() 
+
+                infos["episode"]["delta_target_pos"] = 0
+                infos["episode"]["nan_counter"] = self.nan_counter
+
+                return obs, rewards, dones, infos 
+
+            dofs_force = self.robot.get_dofs_force()
+            control_force = self.robot.get_dofs_control_force()
+
+            max_dofs_force = dofs_force.abs().max(dim=0)[0]
+            mean_dofs_force = dofs_force.abs().mean(dim=0)
+
+            max_control_force = control_force.abs().max(dim=0)[0]
+            mean_control_force = control_force.abs().mean(dim=0)
 
             # Debug Visualization (Optional)
             if self.show_viewer:
-                self._debug_vis()
+                # self._debug_vis()
                 pass
 
             # NOTE: OBSERVATION & REWARD
@@ -468,18 +522,35 @@ class FastFrankaEnv(VecEnv):
             
             # NOTE: BUILD INFOS USING EXISTING TENSOR
             dist = obs_tensor[:, 37]
-            
+            mean_gap = (target_dofs_pos - obs_tensor[:, 0:9]).abs().mean().item()
+            max_gap = (target_dofs_pos - obs_tensor[:, 0:9]).abs().max().item()
             infos = {
                 "time_outs": time_outs,
                 "episode" : {
-                    "nan_counter": self.nan_counter,
+                    "mean_delta_target_pos": mean_gap,
+                    "max_delta_target_pos": max_gap,
                 }
             }
 
+            for i in range(9):
+                joint_name = JOINT_NAMES[i]
+
+                infos["episode"][f"delta_action_max/{joint_name}"] = max_deltas_per_joint[i].item()
+                infos["episode"][f"delta_action_mean/{joint_name}"] = mean_deltas_per_joint[i].item() 
+
+                # DOF Forces (Net physical forces on the joint, including gravity/collisions)
+                infos["episode"][f"dofs_force_max/{joint_name}"] = max_dofs_force[i].item()
+                infos["episode"][f"dofs_force_mean/{joint_name}"] = mean_dofs_force[i].item()
+
+                # Control Torques/Forces (What the PD motors are actually outputting)
+                infos["episode"][f"control_force_max/{joint_name}"] = max_control_force[i].item()
+                infos["episode"][f"control_force_mean/{joint_name}"] = mean_control_force[i].item()
+
             if self.is_monitor:
                 infos["dofs_pos"] = obs_tensor[:, 0:9]
-                infos["target_pos"] = obs_tensor[:, 31:34]
                 infos["dist"] = dist
+                infos["target_pos"] = obs_tensor[:, 31:34]
+                # infos["target_pos"] = target_dofs_pos
 
             # NOTE: HANDLE RESETS (Only update obs if necessary)
             if total_dones.any():
@@ -489,23 +560,13 @@ class FastFrankaEnv(VecEnv):
 
                 terminal_dist = dist[total_dones]  # only the envs that just ended
 
-                infos["episode"] = {
-
-                    # Average final distance across envs that just terminated
-                    "terminal_mean_distance": terminal_dist.mean().item(),
-
-                    # Breakdown: how many ended from success vs timeout
-                    "success_rate": (terminal_dist < self.success_range).float().mean().item(),
-                }
+                infos["episode"]["terminal_mean_distance"] = terminal_dist.mean().item()
+                infos["episode"]["success_rate"] = (terminal_dist < self.success_range).float().mean().item()
                 
                 # ONLY fetch observations a second time if environments were teleported
                 # RSL-RL requires the returned 'obs' to reflect the post-reset state
                 obs = self.get_observations()
-            else:
-                # NOTE: if termination or timout happens, reset_at handles resetting last_actions. 
-                # else clone the actions to last_actions so that in next step these actions can be accessible.
-                self.last_actions = actions.clone()
-            
+
             return obs, rewards, total_dones, infos 
             
         except Exception as e:
