@@ -529,6 +529,7 @@ class FastFrankaEnv(VecEnv):
                 "episode" : {
                     "mean_delta_target_pos": mean_gap,
                     "max_delta_target_pos": max_gap,
+                    "nan_counter": self.nan_counter
                 }
             }
 
