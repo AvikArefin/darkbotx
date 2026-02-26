@@ -5,7 +5,7 @@ description = "A visionless grasping robot"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "genesis-world>=0.3.14",
+    "genesis-world>=0.4.0",
     "mapbox-earcut>=2.0.0",
     "numpy-stl>=3.2.0",
     "urdf-parser-py>=0.0.4",
