@@ -11,16 +11,16 @@ from code.logger_setup import setup_logger
 logger = setup_logger(__name__)
 
 JOINT_NAMES = [
-        "joint1",
-        "joint2",
-        "joint3",
-        "joint4",
-        "joint5",
-        "joint6",
-        "joint7",
-        "finger_joint1",
-        "finger_joint2",
-    ]
+    "joint1",
+    "joint2",
+    "joint3",
+    "joint4",
+    "joint5",
+    "joint6",
+    "joint7",
+    "finger_joint1",
+    "finger_joint2",
+]
 
 # dummy class for wandb
 class ConfigDict(dict):
@@ -186,8 +186,9 @@ class FastFrankaEnv(VecEnv):
         self.target.set_pos(self.init_target_pos)
 
         # NOTE: init debug visualization
+
+        self.analyze_robot()
         if show_viewer:
-            # self.analyze_robot()
             # self._init_vis_debug()
             # self._init_spawn_vis()
             # self._init_success_sphere_vis()
@@ -222,23 +223,160 @@ class FastFrankaEnv(VecEnv):
 
     @torch.no_grad()
     def analyze_robot(self):
-        """
-        Analyzes the robot's properties.
-        """
         try:
-            self.robot_mass = sum(link.inertial_mass for link in self.robot.links)
-            logger.debug(f"Calculated total robot mass: {self.robot_mass:.2f} kg")
+            logger.debug("=" * 60)
+            logger.debug("  GENESIS OBJECT ATTRIBUTE DISCOVERY")
+            logger.debug("=" * 60)
 
-            logger.debug("\n--- Link Inertial Properties ---")
+            if self.robot.joints:
+                j = self.robot.joints[0]
+                logger.debug(f"  Joint[0] type : {type(j)}")
+                logger.debug("  Joint[0] __dict__ keys:")
+                for k, v in vars(j).items():
+                    logger.debug(f"    {k:<35} = {repr(v)[:80]}")
+                logger.debug("  Joint[0] public attrs (dir):")
+                public = [a for a in dir(j) if not a.startswith("__")]
+                for a in public:
+                    try:
+                        val = getattr(j, a)
+                        if not callable(val):
+                            logger.debug(f"    {a:<35} = {repr(val)[:80]}")
+                    except Exception:
+                        logger.debug(f"    {a:<35} = <error reading>")
+
+            logger.debug("")
+
+            if self.robot.links:
+                lk = self.robot.links[0]
+                logger.debug("  Link[0] type : {type(lk)}")
+                logger.debug("  Link[0] __dict__ keys:")
+                for k, v in vars(lk).items():
+                    logger.debug(f"    {k:<35} = {repr(v)[:80]}")
+                logger.debug("  Link[0] public attrs (dir):")
+                public = [a for a in dir(lk) if not a.startswith("__")]
+                for a in public:
+                    try:
+                        val = getattr(lk, a)
+                        if not callable(val):
+                            logger.debug(f"    {a:<35} = {repr(val)[:80]}")
+                    except Exception:
+                        logger.debug(f"    {a:<35} = <error reading>")
+
+            logger.debug("")
+
+            # INFO:  ROBOT-LEVEL SUMMARY
+            self.robot_mass = sum(link.inertial_mass for link in self.robot.links)
+
+            logger.debug("=" * 60)
+            logger.debug("  ROBOT SUMMARY")
+            logger.debug("=" * 60)
+            logger.debug(f"  Total mass       : {self.robot_mass:.4f} kg")
+            logger.debug(f"  Number of links  : {len(self.robot.links)}")
+            logger.debug(f"  Number of joints : {len(self.robot.joints)}")
+            logger.debug(f"  Number of DOFs   : {self.robot.n_dofs}")
+
+            # INFO:  DOF-LEVEL PROPERTIES
+            dof_pos_lower, dof_pos_upper     = self.robot.get_dofs_limit()
+            dof_force_lower, dof_force_upper = self.robot.get_dofs_force_range()
+            dof_kp = self.robot.get_dofs_kp()
+            dof_kv = self.robot.get_dofs_kv()
+
+            dof_pos_span   = dof_pos_upper - dof_pos_lower
+            dof_pos_center = (dof_pos_upper + dof_pos_lower) / 2.0
+            safe_max_vel   = (dof_force_upper / (dof_kp + 1e-9)) / self.ctrl_dt
+
+            logger.debug("")
+            logger.debug("=" * 60)
+            logger.debug("  DOF PROPERTIES")
+            logger.debug("=" * 60)
+            logger.debug(
+                f"  {'i':<4} {'Name':<22} "
+                f"{'PosMin':>8} {'PosMax':>8} {'Span':>8} {'Center':>8} "
+                f"{'FMin':>8} {'FMax':>8} "
+                f"{'kp':>7} {'kv':>6} "
+            )
+            logger.debug("  " + "-" * 105)
+            for i in range(self.robot.n_dofs):
+                name = JOINT_NAMES[i] if i < len(JOINT_NAMES) else f"dof_{i}"
+                logger.debug(
+                    f"  {i:<4} {name:<22} "
+                    f"{dof_pos_lower[i].item():>8.4f} {dof_pos_upper[i].item():>8.4f} "
+                    f"{dof_pos_span[i].item():>8.4f} {dof_pos_center[i].item():>8.4f} "
+                    f"{dof_force_lower[i].item():>8.2f} {dof_force_upper[i].item():>8.2f} "
+                    f"{dof_kp[i].item():>7.1f} {dof_kv[i].item():>6.1f} "
+                )
+            logger.debug("  Units: pos=rad(m for fingers) | force=Nm | vel=rad/s | kp=Nm/rad | kv=Nm·s/rad")
+
+            # INFO:  LINK PROPERTIES
+            logger.debug("=" * 60)
+            logger.debug("  LINK INERTIAL PROPERTIES")
+            logger.debug("=" * 60)
+
             for link in self.robot.links:
-                logger.debug(f"\nLink: {link.name}")
-                logger.debug(f"  Mass: {link.inertial_mass}")
-                logger.debug(f"  Inertia tensor:\n{link.inertial_i}")
-                logger.debug(f"  COM position: {link.inertial_pos}")
-                logger.debug(f"  COM orientation (quat): {link.inertial_quat}")
-            logger.debug("---------------------------------\n")
+                logger.debug(f"  Link: {link.name}")
+
+                # --- mass ---
+                logger.debug(f"    mass             : {link.inertial_mass:.6f} kg")
+                logger.debug(f"    COM pos          : {link.inertial_pos}")
+                logger.debug(f"    COM quat (xyzw)  : {link.inertial_quat}")
+
+                inertial_i = link.inertial_i
+                if inertial_i is not None:
+                    logger.debug("    Inertia tensor   :")
+                    logger.debug(f"      [{inertial_i[0][0]:.6f}  {inertial_i[0][1]:.6f}  {inertial_i[0][2]:.6f}]")
+                    logger.debug(f"      [{inertial_i[1][0]:.6f}  {inertial_i[1][1]:.6f}  {inertial_i[1][2]:.6f}]")
+                    logger.debug(f"      [{inertial_i[2][0]:.6f}  {inertial_i[2][1]:.6f}  {inertial_i[2][2]:.6f}]")
+                    logger.debug(f"    Inertia trace    : {float(inertial_i[0][0]+inertial_i[1][1]+inertial_i[2][2]):.6f} kg·m²")
+
+            # INFO:  JOINT PROPERTIES
+            logger.debug("  JOINT PROPERTIES")
+            logger.debug("=" * 60)
+
+            SAFE_JOINT_ATTRS = [
+                "name", "type", "dofs_idx_local", "dof_start", "n_dofs",
+                "pos", "quat", "init_qpos", "armature", "damping", "friction",
+            ]
+
+            for joint in self.robot.joints:
+                logger.debug(f"  Joint: {getattr(joint, 'name', '<no name>')}")
+                for attr in SAFE_JOINT_ATTRS:
+                    try:
+                        val = getattr(joint, attr)
+                        logger.debug(f"    {attr:<20} : {val}")
+                    except AttributeError:
+                        pass  # silently skip attrs that don't exist in this Genesis version
+                logger.debug("")
+
+            # INFO:  ACTION SCALE SANITY CHECK
+            logger.debug("=" * 60)
+            logger.debug("  ACTION SCALE SANITY CHECK  (delta control)")
+            logger.debug("=" * 60)
+            logger.debug(f"  ctrl_dt = {self.ctrl_dt}s")
+            logger.debug(
+                f"  {'i':<4} {'Name':<22} "
+                f"{'Scale(rad/s)':>13} {'MaxΔ/step':>11} "
+                f"{'ImpliedVel':>11} {'SafeVel':>10} {'Status':>8}"
+            )
+            logger.debug("  " + "-" * 85)
+
+            for i in range(self.robot.n_dofs):
+                name      = JOINT_NAMES[i] if i < len(JOINT_NAMES) else f"dof_{i}"
+                scale     = self.action_scales[i].item()
+                max_delta = scale * self.ctrl_dt
+                impl_vel  = scale
+                safe_vel  = safe_max_vel[i].item()
+                status    = "✅ OK" if impl_vel <= safe_vel else "❌ OVER"
+                logger.debug(
+                    f"  {i:<4} {name:<22} "
+                    f"{scale:>13.4f} {max_delta:>11.5f} "
+                    f"{impl_vel:>11.4f} {safe_vel:>10.4f} {status:>8}"
+                )
+
+            logger.debug("")
+            logger.debug("=" * 60)
+
         except Exception as e:
-            logger.exception(f"[ANALYZE ROBOT ERROR] {e}")
+            logger.exception(f"[ANALYZE ROBOT ERROR] {e}") 
 
     @torch.no_grad()
     def _init_vis_debug(self):
@@ -432,17 +570,18 @@ class FastFrankaEnv(VecEnv):
 
     def step(self, actions: torch.Tensor):
         try:
+            prev_dofs_force = self.robot.get_dofs_force()
+            prev_control_force = self.robot.get_dofs_control_force()
+
             # NOTE: Apply actions (Delta Control)
             delta_actions = (actions - self.last_actions) * self.action_scales
-            max_deltas_per_joint = delta_actions.abs().max(dim=0)[0]
+            env10_deltas_per_joint = delta_actions[0].abs()
             mean_deltas_per_joint = delta_actions.abs().mean(dim=0)
             
             self.last_actions = actions.clone()
 
-            dof_center = (self.dof_upper + self.dof_lower) / 2.0
-            dof_span = (self.dof_upper - self.dof_lower) / 2.0
-            target_dofs_pos = dof_center + actions * self.action_scales * dof_span 
-
+            current_pos = self.robot.get_dofs_position()
+            target_dofs_pos = current_pos + actions * self.action_scales * self.ctrl_dt
             target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
 
             self.robot.control_dofs_position(target_dofs_pos)
@@ -462,10 +601,6 @@ class FastFrankaEnv(VecEnv):
                     f"Contains NaNs: {has_nans} | Contains Infs: {has_infs}\n"
                 )
 
-                control_force = self.robot.get_dofs_control_force()
-                max_control_force = control_force.abs().max(dim=0)[0]
-                mean_control_force = control_force.abs().mean(dim=0)
-
                 all_ids = torch.arange(self.num_envs, device=self.device)
                 self.reset_at(all_ids)
                 self.episode_length_buf.zero_()
@@ -475,32 +610,15 @@ class FastFrankaEnv(VecEnv):
 
                 infos   = {
                     "time_outs": dones,
-                    "episode": dict()
                 }
-
-                for i in range(9):
-                    joint_name = JOINT_NAMES[i]
-
-                    infos["episode"][f"delta_action_max/{joint_name}"] = max_deltas_per_joint[i].item()
-                    infos["episode"][f"delta_action_mean/{joint_name}"] = mean_deltas_per_joint[i].item() 
-
-                    # Control Torques/Forces (What the PD motors are actually outputting)
-                    infos["episode"][f"control_force_max/{joint_name}"] = max_control_force[i].item()
-                    infos["episode"][f"control_force_mean/{joint_name}"] = mean_control_force[i].item() 
-
-                infos["episode"]["delta_target_pos"] = 0
-                infos["episode"]["nan_counter"] = self.nan_counter
 
                 return obs, rewards, dones, infos 
 
-            dofs_force = self.robot.get_dofs_force()
-            control_force = self.robot.get_dofs_control_force()
+            prev_env10_force = prev_dofs_force[0].abs()
+            prev_mean_force = prev_dofs_force.abs().mean(dim=0)
 
-            max_dofs_force = dofs_force.abs().max(dim=0)[0]
-            mean_dofs_force = dofs_force.abs().mean(dim=0)
-
-            max_control_force = control_force.abs().max(dim=0)[0]
-            mean_control_force = control_force.abs().mean(dim=0)
+            prev_env10_ctrl_force = prev_control_force[0].abs()
+            prev_mean_ctrl_force = prev_control_force.abs().mean(dim=0)
 
             # Debug Visualization (Optional)
             if self.show_viewer:
@@ -523,29 +641,28 @@ class FastFrankaEnv(VecEnv):
             # NOTE: BUILD INFOS USING EXISTING TENSOR
             dist = obs_tensor[:, 37]
             mean_gap = (target_dofs_pos - obs_tensor[:, 0:9]).abs().mean().item()
-            max_gap = (target_dofs_pos - obs_tensor[:, 0:9]).abs().max().item()
+            env10_max_gap = (target_dofs_pos[0] - obs_tensor[0, 0:9]).abs().max().item()
             infos = {
                 "time_outs": time_outs,
                 "episode" : {
                     "mean_delta_target_pos": mean_gap,
-                    "max_delta_target_pos": max_gap,
-                    "nan_counter": self.nan_counter
+                    "env10_max_delta_target_pos": env10_max_gap,
                 }
             }
 
             for i in range(9):
                 joint_name = JOINT_NAMES[i]
 
-                infos["episode"][f"delta_action_max/{joint_name}"] = max_deltas_per_joint[i].item()
+                infos["episode"][f"delta_action_10/{joint_name}"] = env10_deltas_per_joint[i].item()
                 infos["episode"][f"delta_action_mean/{joint_name}"] = mean_deltas_per_joint[i].item() 
 
                 # DOF Forces (Net physical forces on the joint, including gravity/collisions)
-                infos["episode"][f"dofs_force_max/{joint_name}"] = max_dofs_force[i].item()
-                infos["episode"][f"dofs_force_mean/{joint_name}"] = mean_dofs_force[i].item()
+                infos["episode"][f"prev_force_10/{joint_name}"] = prev_env10_force[i].item()
+                infos["episode"][f"prev_force_mean/{joint_name}"] = prev_mean_force[i].item()
 
                 # Control Torques/Forces (What the PD motors are actually outputting)
-                infos["episode"][f"control_force_max/{joint_name}"] = max_control_force[i].item()
-                infos["episode"][f"control_force_mean/{joint_name}"] = mean_control_force[i].item()
+                infos["episode"][f"prev_ctrl_force_10/{joint_name}"] = prev_env10_ctrl_force[i].item()
+                infos["episode"][f"prev_ctrl_force_mean/{joint_name}"] = prev_mean_ctrl_force[i].item()
 
             if self.is_monitor:
                 infos["dofs_pos"] = obs_tensor[:, 0:9]
@@ -563,6 +680,7 @@ class FastFrankaEnv(VecEnv):
 
                 infos["episode"]["terminal_mean_distance"] = terminal_dist.mean().item()
                 infos["episode"]["success_rate"] = (terminal_dist < self.success_range).float().mean().item()
+                infos["episode"]["nan_count"] = self.nan_counter
                 
                 # ONLY fetch observations a second time if environments were teleported
                 # RSL-RL requires the returned 'obs' to reflect the post-reset state

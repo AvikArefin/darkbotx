@@ -146,7 +146,7 @@ env_cfg = {
     "num_envs": 1024,
     "num_obs": 39,
     "num_actions": 9,
-    "action_scales": [1.0, 1.0, 1.0, 1.0, 0.5, 0.5, 0.3, 0.05, 0.05],
+    "action_scales": [8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 10.0, 10.0],
     "episode_length_s": 3.0,
     "ctrl_dt": 0.01,
     "substeps": 10,
