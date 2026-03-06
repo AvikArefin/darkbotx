@@ -38,3 +38,10 @@ uv run main.py -t --debug sim
 ```
 
 or whatever you want
+
+# Setup Pi
+
+Might need to use something else. This was a WIP option.
+```bash
+sudo apt install liblgpio-dev
+```
