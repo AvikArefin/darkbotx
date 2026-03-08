@@ -8,9 +8,9 @@ def initialize_bot():
     Channels 1-5: 180 degrees, set to 90.
     """
     # ANSI Escape Codes for colors
-    RED = "\033[91m"
+    RED   = "\033[91m"
     RESET = "\033[0m"
-    BOLD = "\033[1m"
+    BOLD  = "\033[1m"
 
     print(f"\n{RED}{BOLD}WARNING: Bot might move abruptly to preset position!!!{RESET}")
     
@@ -33,7 +33,7 @@ def initialize_bot():
     print("Now the fingers can be attached")
 
     # 2. Configure the Arm Joints (Channels 1 through 5)
-    # ######################## Range: 180, Position: 90 ########################
+    # ########################  Range: 180, Position: 90  ########################
     for i in range(1, 6):
         kit.servo[i].set_pulse_width_range(500, 2500)
         kit.servo[i].actuation_range = 180
