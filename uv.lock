@@ -35,6 +35,20 @@ wheels = [
 ]
 
 [[package]]
+name = "adafruit-circuitpython-ads1x15"
+version = "3.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "adafruit-blinka" },
+    { name = "adafruit-circuitpython-busdevice" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b0/83/369becf54c48ef075f98462fbb22f63912d238147d585f3f932a78d2967f/adafruit_circuitpython_ads1x15-3.0.2.tar.gz", hash = "sha256:c031a2f578bd435e2b1426e8e261509a787d6fdbb47342ad989c67a2836cee70", size = 30317, upload-time = "2025-11-04T20:08:29.627Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/6f/f95e278aa54d7743443d40bf0b9f6ad730ebf35c73353ff774c7c2a0e7ed/adafruit_circuitpython_ads1x15-3.0.2-py3-none-any.whl", hash = "sha256:179c51229ef831949c3a17d419109d730d71888ad00191a501529969faf5cce7", size = 11417, upload-time = "2025-11-04T20:08:28.745Z" },
+]
+
+[[package]]
 name = "adafruit-circuitpython-busdevice"
 version = "5.2.15"
 source = { registry = "https://pypi.org/simple" }
@@ -455,6 +469,7 @@ name = "darkbotx"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "adafruit-circuitpython-ads1x15" },
     { name = "adafruit-circuitpython-servokit" },
     { name = "genesis-world" },
     { name = "mapbox-earcut" },
@@ -469,6 +484,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "adafruit-circuitpython-ads1x15", specifier = ">=3.0.2" },
     { name = "adafruit-circuitpython-servokit", specifier = ">=1.3.22" },
     { name = "genesis-world", specifier = ">=0.4.0" },
     { name = "mapbox-earcut", specifier = ">=2.0.0" },
