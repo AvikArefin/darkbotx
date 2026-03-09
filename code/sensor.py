@@ -46,6 +46,7 @@ class Sensor:
         except Exception as e:
             raise SensorError(f"Failed to read voltage on pin {pin}: {e}") from e
 
+        # TODO: For different sensors this will be different, we should handled deferently but it is subject to tuning.
         if not (self.V_MIN <= v <= self.V_MAX):
             logger.warning(
                 "Pin %d: Voltage %.3fV out of expected range [%.1f, %.1f]",
