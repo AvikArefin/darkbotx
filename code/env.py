@@ -28,7 +28,6 @@ class ConfigDict(dict):
     def to_dict(self):
         return dict(self)
 
-
 @torch.inference_mode()
 def _check_nan(tensor: torch.Tensor, name: str, context: str = "") -> bool:
     """Returns True if NaN detected, logs details."""
@@ -60,23 +59,21 @@ class FastFrankaEnv(VecEnv):
     @torch.no_grad()
     def __init__(self, env_cfg: dict, reward_cfg: dict, robot_cfg: dict, show_viewer: bool = False):
         # INFO: __INIT__ RSL-RL 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+
         self.show_viewer : bool = show_viewer
         self.is_monitor : bool = env_cfg["is_monitor"]
         self.num_envs : int = env_cfg["num_envs"] 
         self.num_actions : int = env_cfg["num_actions"]
         self.num_obs : int = env_cfg["num_obs"]
         self.num_privileged_obs = None
-
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-
         self.ctrl_dt : float = env_cfg["ctrl_dt"]
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.ctrl_dt)
-
-        self.success_range : torch.Tensor = torch.tensor( 0.087, device=self.device) # WARN: This property will be deprecated in future.  
+        self.action_scales = torch.tensor(env_cfg["action_scales"], device=self.device)
+        self.control_mode = robot_cfg["control_mode"]
 
         self.env_cfg : dict = env_cfg
         self.reward_scales : dict = reward_cfg
-        self.action_scales = torch.tensor(env_cfg["action_scales"], device=self.device)
 
         self.cfg = ConfigDict({
             "env": env_cfg,
@@ -86,8 +83,10 @@ class FastFrankaEnv(VecEnv):
 
         # Tracking buffers for RSL-RL logic
         self.episode_length_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
-
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, device=self.device)
+
+        # WARN: This property will be deprecated in future.  
+        self.success_range : torch.Tensor = torch.tensor(0.087, device=self.device) 
 
         # INFO: __INIT__ GENESIS ENGINE
         gs.init(
@@ -347,34 +346,6 @@ class FastFrankaEnv(VecEnv):
                         pass  # silently skip attrs that don't exist in this Genesis version
                 logger.debug("")
 
-            # INFO:  ACTION SCALE SANITY CHECK
-            logger.debug("=" * 60)
-            logger.debug("  ACTION SCALE SANITY CHECK  (delta control)")
-            logger.debug("=" * 60)
-            logger.debug(f"  ctrl_dt = {self.ctrl_dt}s")
-            logger.debug(
-                f"  {'i':<4} {'Name':<22} "
-                f"{'Scale(rad/s)':>13} {'MaxΔ/step':>11} "
-                f"{'ImpliedVel':>11} {'SafeVel':>10} {'Status':>8}"
-            )
-            logger.debug("  " + "-" * 85)
-
-            for i in range(self.robot.n_dofs):
-                name      = JOINT_NAMES[i] if i < len(JOINT_NAMES) else f"dof_{i}"
-                scale     = self.action_scales[i].item()
-                max_delta = scale * self.ctrl_dt
-                impl_vel  = scale
-                safe_vel  = safe_max_vel[i].item()
-                status    = "✅ OK" if impl_vel <= safe_vel else "❌ OVER"
-                logger.debug(
-                    f"  {i:<4} {name:<22} "
-                    f"{scale:>13.4f} {max_delta:>11.5f} "
-                    f"{impl_vel:>11.4f} {safe_vel:>10.4f} {status:>8}"
-                )
-
-            logger.debug("")
-            logger.debug("=" * 60)
-
         except Exception as e:
             logger.exception(f"[ANALYZE ROBOT ERROR] {e}") 
 
@@ -497,6 +468,21 @@ class FastFrankaEnv(VecEnv):
 
     # INFO: CORE API
     @torch.no_grad()
+    def _dls_ik(self, action: torch.Tensor) -> torch.Tensor:
+        """
+        Damped least squares inverse kinematics
+        """
+        delta_pose = action[:, :6]
+        lambda_val = 0.01
+        jacobian = self.robot.get_jacobian(link=self.hand_link)
+        jacobian_T = jacobian.transpose(1, 2)
+        lambda_matrix = (lambda_val**2) * torch.eye(n=jacobian.shape[1], device=self.device)
+        delta_joint_pos = (
+            jacobian_T @ torch.inverse(jacobian @ jacobian_T + lambda_matrix) @ delta_pose.unsqueeze(-1)
+        ).squeeze(-1)
+        return self.robot.get_qpos() + delta_joint_pos
+
+    @torch.no_grad()
     def get_observations(self):
         """Fetches the current state of the robot and target."""
         dofs_pos = self.robot.get_dofs_position()
@@ -569,129 +555,131 @@ class FastFrankaEnv(VecEnv):
         return rewards, termination_dones
 
     def step(self, actions: torch.Tensor):
+        # prev_dofs_force = self.robot.get_dofs_force()
+        # prev_control_force = self.robot.get_dofs_control_force()
+        #
+        # delta_actions = (actions - self.last_actions) * self.action_scales
+        # env10_deltas_per_joint = delta_actions[0].abs()
+        # mean_deltas_per_joint = delta_actions.abs().mean(dim=0)
+        
+        self.last_actions = actions.clone()
+
+        # NOTE: Apply actions
+        current_dof_pos = self.robot.get_dofs_position()
+        if self.control_mode == "dof":
+            target_dofs_pos = current_dof_pos + actions * self.action_scales * self.ctrl_dt
+        else:
+            target_dofs_pos = self._dls_ik(actions * self.action_scales * self.ctrl_dt)
+
+            gripper_actions = actions[:, 6:7] * self.action_scales[6] * self.ctrl_dt
+            target_dofs_pos[:, 7:9] = current_dof_pos[:, 7:9] + gripper_actions
+
+        target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
+        self.robot.control_dofs_position(target_dofs_pos)
+
+        # WARN: Physics step NaN recovery. Need to be improved later
         try:
-            prev_dofs_force = self.robot.get_dofs_force()
-            prev_control_force = self.robot.get_dofs_control_force()
+            self.scene.step()
+        except gs.GenesisException as physics_err:
+            self.nan_counter += 1
+            has_nans = torch.isnan(target_dofs_pos).any().item()
+            has_infs = torch.isinf(target_dofs_pos).any().item()
 
-            # NOTE: Apply actions (Delta Control)
-            delta_actions = (actions - self.last_actions) * self.action_scales
-            env10_deltas_per_joint = delta_actions[0].abs()
-            mean_deltas_per_joint = delta_actions.abs().mean(dim=0)
-            
-            self.last_actions = actions.clone()
+            logger.exception(
+                f"[PHYSICS NaN] Solver diverged: {physics_err}. "
+                f"Resetting all {self.num_envs} envs and continuing.\n"
+                f"--- target_dofs_pos Diagnostics ---\n"
+                f"Contains NaNs: {has_nans} | Contains Infs: {has_infs}\n"
+            )
 
-            current_pos = self.robot.get_dofs_position()
-            target_dofs_pos = current_pos + actions * self.action_scales * self.ctrl_dt
-            target_dofs_pos = torch.clamp(target_dofs_pos, self.dof_lower, self.dof_upper)
-
-            self.robot.control_dofs_position(target_dofs_pos)
-
-            # WARN: Physics step NaN recovery. Need to be improved later
-            try:
-                self.scene.step()
-            except gs.GenesisException as physics_err:
-                self.nan_counter += 1
-                has_nans = torch.isnan(target_dofs_pos).any().item()
-                has_infs = torch.isinf(target_dofs_pos).any().item()
-
-                logger.exception(
-                    f"[PHYSICS NaN] Solver diverged: {physics_err}. "
-                    f"Resetting all {self.num_envs} envs and continuing.\n"
-                    f"--- target_dofs_pos Diagnostics ---\n"
-                    f"Contains NaNs: {has_nans} | Contains Infs: {has_infs}\n"
-                )
-
-                all_ids = torch.arange(self.num_envs, device=self.device)
-                self.reset_at(all_ids)
-                self.episode_length_buf.zero_()
-                obs = self.get_observations()
-                rewards = torch.zeros(self.num_envs, device=self.device)
-                dones   = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
-
-                infos   = {
-                    "time_outs": dones,
-                }
-
-                return obs, rewards, dones, infos 
-
-            prev_env10_force = prev_dofs_force[0].abs()
-            prev_mean_force = prev_dofs_force.abs().mean(dim=0)
-
-            prev_env10_ctrl_force = prev_control_force[0].abs()
-            prev_mean_ctrl_force = prev_control_force.abs().mean(dim=0)
-
-            # Debug Visualization (Optional)
-            if self.show_viewer:
-                # self._debug_vis()
-                pass
-
-            # NOTE: OBSERVATION & REWARD
-            # Fetch observations once
+            all_ids = torch.arange(self.num_envs, device=self.device)
+            self.reset_at(all_ids)
+            self.episode_length_buf.zero_()
             obs = self.get_observations()
-            obs_tensor = obs["policy"]
+            rewards = torch.zeros(self.num_envs, device=self.device)
+            dones   = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
 
-            # Compute Rewards and Dones using the pre-fetched tensor
-            rewards, termination_dones = self._compute_reward(obs_tensor, actions)
-            
-            # Handle Timeouts & Total Dones
-            self.episode_length_buf += 1
-            time_outs = self.episode_length_buf >= self.max_episode_length
-            total_dones = termination_dones | time_outs
-            
-            # NOTE: BUILD INFOS USING EXISTING TENSOR
-            dist = obs_tensor[:, 37]
-            mean_gap = (target_dofs_pos - obs_tensor[:, 0:9]).abs().mean().item()
-            env10_max_gap = (target_dofs_pos[0] - obs_tensor[0, 0:9]).abs().max().item()
-            infos = {
-                "time_outs": time_outs,
-                "episode" : {
-                    "mean_delta_target_pos": mean_gap,
-                    "env10_max_delta_target_pos": env10_max_gap,
-                }
+            infos   = {
+                "time_outs": dones,
             }
 
-            for i in range(9):
-                joint_name = JOINT_NAMES[i]
+            return obs, rewards, dones, infos 
 
-                infos["episode"][f"delta_action_10/{joint_name}"] = env10_deltas_per_joint[i].item()
-                infos["episode"][f"delta_action_mean/{joint_name}"] = mean_deltas_per_joint[i].item() 
+        # prev_env10_force = prev_dofs_force[0].abs()
+        # prev_mean_force = prev_dofs_force.abs().mean(dim=0)
+        #
+        # prev_env10_ctrl_force = prev_control_force[0].abs()
+        # prev_mean_ctrl_force = prev_control_force.abs().mean(dim=0)
 
-                # DOF Forces (Net physical forces on the joint, including gravity/collisions)
-                infos["episode"][f"prev_force_10/{joint_name}"] = prev_env10_force[i].item()
-                infos["episode"][f"prev_force_mean/{joint_name}"] = prev_mean_force[i].item()
+        # Debug Visualization (Optional)
+        if self.show_viewer:
+            # self._debug_vis()
+            pass
 
-                # Control Torques/Forces (What the PD motors are actually outputting)
-                infos["episode"][f"prev_ctrl_force_10/{joint_name}"] = prev_env10_ctrl_force[i].item()
-                infos["episode"][f"prev_ctrl_force_mean/{joint_name}"] = prev_mean_ctrl_force[i].item()
+        # NOTE: OBSERVATION & REWARD
+        # Fetch observations once
+        obs = self.get_observations()
+        obs_tensor = obs["policy"]
 
-            if self.is_monitor:
-                infos["dofs_pos"] = obs_tensor[:, 0:9]
-                infos["dist"] = dist
-                infos["target_pos"] = obs_tensor[:, 31:34]
-                # infos["target_pos"] = target_dofs_pos
+        # Compute Rewards and Dones using the pre-fetched tensor
+        rewards, termination_dones = self._compute_reward(obs_tensor, actions)
+        
+        # Handle Timeouts & Total Dones
+        self.episode_length_buf += 1
+        time_outs = self.episode_length_buf >= self.max_episode_length
+        total_dones = termination_dones | time_outs
+        
+        # NOTE: BUILD INFOS USING EXISTING TENSOR
 
-            # NOTE: HANDLE RESETS (Only update obs if necessary)
-            if total_dones.any():
-                env_ids = total_dones.nonzero(as_tuple=False).flatten()
-                self.reset_at(env_ids)
-                self.episode_length_buf[env_ids] = 0
+        dist = obs_tensor[:, 37]
+        # mean_gap = (target_dofs_pos - obs_tensor[:, 0:9]).abs().mean().item()
+        # env10_max_gap = (target_dofs_pos[0] - obs_tensor[0, 0:9]).abs().max().item()
+        infos = {
+            "time_outs": time_outs,
+            "episode" : {
+                # "mean_delta_target_pos": mean_gap,
+                # "env10_max_delta_target_pos": env10_max_gap,
+            }
+        }
 
-                terminal_dist = dist[total_dones]  # only the envs that just ended
+        # for i in range(9):
+        #     joint_name = JOINT_NAMES[i]
+        #
+        #     infos["episode"][f"delta_action_10/{joint_name}"] = env10_deltas_per_joint[i].item()
+        #     infos["episode"][f"delta_action_mean/{joint_name}"] = mean_deltas_per_joint[i].item() 
+        #
+        #     # DOF Forces (Net physical forces on the joint, including gravity/collisions)
+        #     infos["episode"][f"prev_force_10/{joint_name}"] = prev_env10_force[i].item()
+        #     infos["episode"][f"prev_force_mean/{joint_name}"] = prev_mean_force[i].item()
+        #
+        #     # Control Torques/Forces (What the PD motors are actually outputting)
+        #     infos["episode"][f"prev_ctrl_force_10/{joint_name}"] = prev_env10_ctrl_force[i].item()
+        #     infos["episode"][f"prev_ctrl_force_mean/{joint_name}"] = prev_mean_ctrl_force[i].item()
 
-                infos["episode"]["terminal_mean_distance"] = terminal_dist.mean().item()
-                infos["episode"]["success_rate"] = (terminal_dist < self.success_range).float().mean().item()
-                infos["episode"]["nan_count"] = self.nan_counter
-                
-                # ONLY fetch observations a second time if environments were teleported
-                # RSL-RL requires the returned 'obs' to reflect the post-reset state
-                obs = self.get_observations()
+        if self.is_monitor:
+            infos["dofs_pos"] = obs_tensor[:, 0:9]
+            infos["dist"] = dist
+            infos["target_pos"] = obs_tensor[:, 31:34]
+            # infos["target_pos"] = target_dofs_pos
 
-            return obs, rewards, total_dones, infos 
+        # NOTE: HANDLE RESETS (Only update obs if necessary)
+        if total_dones.any():
+            env_ids = total_dones.nonzero(as_tuple=False).flatten()
+            self.reset_at(env_ids)
+            self.episode_length_buf[env_ids] = 0
+
+            terminal_dist = dist[total_dones]  # only the envs that just ended
+
+            infos["episode"]["terminal_mean_distance"] = terminal_dist.mean().item()
+            infos["episode"]["success_rate"] = (terminal_dist < self.success_range).float().mean().item()
+            infos["episode"]["nan_count"] = self.nan_counter
             
-        except Exception as e:
-            logger.exception(f"[STEP ERROR] {e}")
-            raise 
+            # ONLY fetch observations a second time if environments were teleported
+            # RSL-RL requires the returned 'obs' to reflect the post-reset state
+            obs = self.get_observations()
 
+        return obs, rewards, total_dones, infos 
+        
     @torch.no_grad()
     def reset_at(self, env_ids: torch.Tensor):
         try:
@@ -703,7 +691,7 @@ class FastFrankaEnv(VecEnv):
                 envs_idx=env_ids,
             )
             self.robot.set_dofs_velocity(
-                torch.zeros(n, self.num_actions, device=self.device),
+                torch.zeros(n, self.robot.n_dofs, device=self.device),
                 envs_idx=env_ids,
             )
 

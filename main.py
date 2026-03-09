@@ -17,7 +17,7 @@ from code.logger_setup import setup_logger
 from code.monitor import Monitor
 
 # Register the custom environment with Gymnasium
-DEFAULT_CONTROL_MODE="ee"
+DEFAULT_CONTROL_MODE="ik"
 DEFAULT_DEBUG_MODE = "both"
 DEFAULT_MAX_ITERATIONS = 1500
 DEFAULT_TOTAL_EPISODES=10                               # WARN: DEPRECATED.
@@ -51,7 +51,9 @@ def get_args():
     parser.add_argument("--debug", nargs="?", const=DEFAULT_DEBUG_MODE, type=str, choices=debug_modes, default=None, help=f"Available debug modes: {debug_modes}. default: %(const)s")
     
     parser.add_argument("--load", nargs="?", const=MODEL_PATH, type=str, default=None, help="Pass model to -i & -t. default: %(const)s")
-    parser.add_argument("--control_mode", nargs="?", const=DEFAULT_CONTROL_MODE, type=str, default=DEFAULT_CONTROL_MODE, help="PyBullet Env Control Mode. default: %(const)s")
+
+    control_modes = ["ik", "dof"]
+    parser.add_argument("--control_mode", nargs="?", const=DEFAULT_CONTROL_MODE, type=str, choices=control_modes, default=DEFAULT_CONTROL_MODE, help=f"Available control modes: {debug_modes}. default: %(const)s")
     parser.add_argument("--crash", type=str, help="reproducing crash from saved debug")
 
     if len(sys.argv) == 1:
@@ -68,7 +70,7 @@ train_cfg = {
 
     # --- General ---
     "num_steps_per_env": 64,                            # NOTE: 16 | 24 | 48 | 64 | 96 | 128 | 256
-    "max_iterations": args.training,                    # NOTE: any int > 0
+    "max_iterations": DEFAULT_MAX_ITERATIONS,           # NOTE: any int > 0
     "seed": 1,                                          # NOTE: any integer
 
     # --- Observations ---
@@ -168,12 +170,25 @@ robot_cfg = {
     "ee_link_name": "hand",
     "gripper_link_names": ["left_finger", "right_finger"],
     # "home_pos": [0.741, 0.63, 0.023, -1.95, 0.26, 2.38, 1.21, 0.41, 0.41],
-    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
-    "ik_method": "dls_ik",
+    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.0, 0.0],
+    "control_mode": DEFAULT_CONTROL_MODE
+}
+
+ik_cfg = {
+    "num_actions" : 7,
+    "action_scales": [
+                        10.0,
+                        10.0,
+                        10.0,
+                        10.0,
+                        10.0,
+                        10.0,
+                        10.0,
+                     ] 
 }
 
 # --- TRAINING: functions and classes ---
-def run_random_simulation(debug: str):
+def run_random_simulation(control_mode : str, debug: str):
     """
     Runs the simulation with random actions.
     If debug is True, visualizes it using the Monitor and extracts telemetry.
@@ -188,6 +203,10 @@ def run_random_simulation(debug: str):
         show_sim = True
     elif debug == "monitor":
         show_monitor = True
+
+    if control_mode == "ik":
+        env_cfg["num_actions"] = ik_cfg["num_actions"]
+        env_cfg["action_scales"] = ik_cfg["action_scales"]
 
     env_cfg["num_envs"] = 1
     env_cfg["is_debug"] = True
@@ -274,7 +293,7 @@ def run_random_simulation(debug: str):
             monitor.close()
         logger.info("Random Simulation Ended.")
 
-def run_manual_simulation():
+def run_manual_simulation(control_mode):
     """
     Runs the simulation in manual control mode.
 
@@ -293,6 +312,10 @@ def run_manual_simulation():
     """
 
     # INFO: configuration changes
+    if control_mode == "ik":
+        env_cfg["num_actions"] = ik_cfg["num_actions"]
+        env_cfg["action_scales"] = ik_cfg["action_scales"] 
+
     env_cfg["num_envs"] = 1
     env_cfg["episode_length_s"] = 99999.0
     env_cfg["is_monitor"] = True
@@ -426,16 +449,22 @@ def run_manual_simulation():
     finally:
         logger.info("Manual Simulation Ended.")
 
-def rl_training(checkpoint_model_path):
-    # INFO: run_id
+def rl_training(max_iterations : int, checkpoint_model_path : str, control_mode : str):
     timestamp = datetime.now().strftime("%H-%M_%d-%m-%Y")
     train_cfg["run_name"] = f"{train_cfg['run_name']}_{timestamp}"
 
+    # INFO: config modification
+    robot_cfg["control_mode"] = control_mode
+
+    if control_mode == "ik":
+        env_cfg["num_actions"] = ik_cfg["num_actions"]
+        env_cfg["action_scales"] = ik_cfg["action_scales"] 
+
     # INFO: env setup
     env = FastFrankaEnv(
-        env_cfg=env_cfg, 
-        reward_cfg=reward_cfg, 
-        robot_cfg=robot_cfg, 
+        env_cfg=env_cfg,
+        reward_cfg=reward_cfg,
+        robot_cfg=robot_cfg,
         show_viewer=False
     )
 
@@ -458,7 +487,7 @@ def rl_training(checkpoint_model_path):
 
     # INFO: start training
     try:
-        runner.learn(train_cfg["max_iterations"])
+        runner.learn(max_iterations)
     except KeyboardInterrupt:
         logger.warning("\nCtrl + C received! Cleaning up resources ...")
     except Exception as e:
@@ -470,7 +499,7 @@ def rl_training(checkpoint_model_path):
             pass
         logger.info(f"RL TRAINING STOPPED! model saved to: {MODEL_PATH}")
 
-def inference_model(model_path : str, debug : str):
+def inference_model(model_path : str, control_mode : str, debug : str):
     # INFO: config modification
     show_sim = False
     show_monitor = False
@@ -692,20 +721,20 @@ def main():
     try:
         if args.random:
             logger.info("--- GUI: RANDOM ACTION SIMULATION ---")
-            run_random_simulation(debug=args.debug)
+            run_random_simulation(control_mode=args.control_mode, debug=args.debug)
             logger.info("FINISHED. Running simulation with random actions.")
         if args.manual:
             logger.info("--- GUI: MANUAL SIMULATION ---")
-            run_manual_simulation()
+            run_manual_simulation(control_mode=args.control_mode)
         if args.training:
             logger.info("--- RL TRAINING ---")
-            rl_training(checkpoint_model_path=args.load)
+            rl_training(max_iterations=args.training, checkpoint_model_path=args.load, control_mode=args.control_mode)
         if args.inference:
             logger.info("--- INFERENCE RL MODEL WITH SIMULATION ---")
 
             if args.load and os.path.exists(args.load):
                 logger.info(f"Inferencing '{args.load}' model")
-                inference_model(model_path=args.load, debug=args.debug)
+                inference_model(model_path=args.load, control_mode=args.control_mode, debug=args.debug)
             else:
                 logger.error("No trained model Found!")
         if args.crash and os.path.exists(args.crash):
