@@ -195,7 +195,7 @@ class FastFrankaEnv(VecEnv):
 
         self.nan_counter = 0
 
-        self.obs_buf = torch.zeros(self.num_envs, 39, device=self.device, dtype=torch.float32)
+        self.obs_buf = torch.zeros(self.num_envs, self.num_obs, device=self.device, dtype=torch.float32)
 
     # INFO: INIT HELPERS
     @torch.inference_mode()
@@ -247,7 +247,7 @@ class FastFrankaEnv(VecEnv):
 
             if self.robot.links:
                 lk = self.robot.links[0]
-                logger.debug("  Link[0] type : {type(lk)}")
+                logger.debug(f"  Link[0] type : {type(lk)}")
                 logger.debug("  Link[0] __dict__ keys:")
                 for k, v in vars(lk).items():
                     logger.debug(f"    {k:<35} = {repr(v)[:80]}")

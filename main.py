@@ -1,4 +1,3 @@
-from datetime import datetime
 import os
 import sys
 import argparse
@@ -53,7 +52,7 @@ def get_args():
     parser.add_argument("--load", nargs="?", const=MODEL_PATH, type=str, default=None, help="Pass model to -i & -t. default: %(const)s")
 
     control_modes = ["ik", "dof"]
-    parser.add_argument("--control_mode", nargs="?", const=DEFAULT_CONTROL_MODE, type=str, choices=control_modes, default=DEFAULT_CONTROL_MODE, help=f"Available control modes: {debug_modes}. default: %(const)s")
+    parser.add_argument("--control_mode", nargs="?", const=DEFAULT_CONTROL_MODE, type=str, choices=control_modes, default=DEFAULT_CONTROL_MODE, help=f"Available control modes: {control_modes}. default: %(const)s")
     parser.add_argument("--crash", type=str, help="reproducing crash from saved debug")
 
     if len(sys.argv) == 1:
@@ -151,7 +150,7 @@ env_cfg = {
     "action_scales": [8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 10.0, 10.0],
     "episode_length_s": 3.0,
     "ctrl_dt": 0.01,
-    "substeps": 10,
+    "substeps": 2,
 
     "is_debug": False,
     "logging_level": "info",
@@ -170,7 +169,7 @@ robot_cfg = {
     "ee_link_name": "hand",
     "gripper_link_names": ["left_finger", "right_finger"],
     # "home_pos": [0.741, 0.63, 0.023, -1.95, 0.26, 2.38, 1.21, 0.41, 0.41],
-    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.0, 0.0],
+    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
     "control_mode": DEFAULT_CONTROL_MODE
 }
 
@@ -499,7 +498,7 @@ def rl_training(max_iterations : int, checkpoint_model_path : str, control_mode 
             pass
         logger.info(f"RL TRAINING STOPPED! model saved to: {MODEL_PATH}")
 
-def inference_model(model_path : str, control_mode : str, debug : str):
+def inference_model(model_path : str, debug : str):
     # INFO: config modification
     show_sim = False
     show_monitor = False
@@ -510,6 +509,30 @@ def inference_model(model_path : str, control_mode : str, debug : str):
         show_sim = True
     elif debug == "monitor":
         show_monitor = True
+
+    logger.info("Inspecting model file to detect control mode...")
+    
+    # Load the raw checkpoint dictionary into CPU memory
+    checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+    
+    # In rsl_rl, the 'std' (standard deviation) tensor in the actor 
+    # perfectly matches the number of actions the network outputs!
+    action_shape = checkpoint["actor_state_dict"]["std"].shape[0]
+    
+    logger.info(f"Detected a {action_shape}-DOF output in the neural network.")
+
+    # 2. DYNAMICALLY CONFIGURE THE ENVIRONMENT
+    if action_shape == 7:
+        env_cfg["control_mode"] = "ik"
+        env_cfg["num_actions"] = 7
+        # Make sure ik_cfg is imported or defined in this file!
+        env_cfg["action_scales"] = ik_cfg["action_scales"] 
+    elif action_shape == 9:
+        env_cfg["control_mode"] = "dof"
+        env_cfg["num_actions"] = 9
+        env_cfg["action_scales"] = [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.1, 0.1]
+    else:
+        raise ValueError(f"Unknown model shape: {action_shape}. Expected 7 or 9.")
 
     env_cfg["is_monitor"] = show_monitor
     env_cfg["num_envs"] = 1
@@ -723,23 +746,25 @@ def main():
             logger.info("--- GUI: RANDOM ACTION SIMULATION ---")
             run_random_simulation(control_mode=args.control_mode, debug=args.debug)
             logger.info("FINISHED. Running simulation with random actions.")
-        if args.manual:
+        elif args.manual:
             logger.info("--- GUI: MANUAL SIMULATION ---")
             run_manual_simulation(control_mode=args.control_mode)
-        if args.training:
+        elif args.training:
             logger.info("--- RL TRAINING ---")
             rl_training(max_iterations=args.training, checkpoint_model_path=args.load, control_mode=args.control_mode)
-        if args.inference:
+        elif args.inference:
             logger.info("--- INFERENCE RL MODEL WITH SIMULATION ---")
 
             if args.load and os.path.exists(args.load):
                 logger.info(f"Inferencing '{args.load}' model")
-                inference_model(model_path=args.load, control_mode=args.control_mode, debug=args.debug)
+                inference_model(model_path=args.load, debug=args.debug)
             else:
                 logger.error("No trained model Found!")
-        if args.crash and os.path.exists(args.crash):
+        elif args.crash and os.path.exists(args.crash):
             logger.info("--- CRASH REPRODUCE ---")
             reproduce_crash(args.crash)
+        else:
+            logger.error("Invalid flags")
     except KeyboardInterrupt:
         logger.warning("\nCtrl + C received! Cleaning up resources ...")
     except Exception as e:
