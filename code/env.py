@@ -537,10 +537,10 @@ class FastFrankaEnv(VecEnv):
             ee_lin_vel,             # (n_envs, 3)
             ee_ang_vel,             # (n_envs, 3)
             target_pos,             # (n_envs, 3)
-            target_quat,            # (n_envs, 4)
             ee_to_target_vector,    # (n_envs, 3)
             dist,                   # (n_envs, 1)
             gripper_width,          # (n_envs, 1)
+            target_quat,            # (n_envs, 4)
         ], dim=-1, out=self.obs_buf)                  # (n_envs, 43)
 
         return TensorDict({"policy": self.obs_buf.clone()}, batch_size=[self.num_envs], device=self.device) 
