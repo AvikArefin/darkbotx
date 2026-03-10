@@ -145,7 +145,7 @@ train_cfg = {
 
 env_cfg = {
     "num_envs": 1024,
-    "num_obs": 39,
+    "num_obs": 43,
     "num_actions": 9,
     "action_scales": [8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 10.0, 10.0],
     "episode_length_s": 3.0,
@@ -169,21 +169,21 @@ robot_cfg = {
     "ee_link_name": "hand",
     "gripper_link_names": ["left_finger", "right_finger"],
     # "home_pos": [0.741, 0.63, 0.023, -1.95, 0.26, 2.38, 1.21, 0.41, 0.41],
-    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04],
+    "home_pos": [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.0, 0.0],
     "control_mode": DEFAULT_CONTROL_MODE
 }
 
 ik_cfg = {
     "num_actions" : 7,
     "action_scales": [
-                        10.0,
-                        10.0,
-                        10.0,
-                        10.0,
-                        10.0,
-                        10.0,
-                        10.0,
-                     ] 
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+    ] 
 }
 
 # --- TRAINING: functions and classes ---
@@ -240,7 +240,6 @@ def run_random_simulation(control_mode : str, debug: str):
             
             # INFO: Genesis-RL loop part
             # Generate Random Actions
-            # Shape: (num_envs, 9) in range [0.0, 1.0] for absolute control
             random_actions = torch.rand((env.num_envs, env.num_actions), device=env.device)
             
             # Step Environment
@@ -449,7 +448,7 @@ def run_manual_simulation(control_mode):
         logger.info("Manual Simulation Ended.")
 
 def rl_training(max_iterations : int, checkpoint_model_path : str, control_mode : str):
-    timestamp = datetime.now().strftime("%H-%M_%d-%m-%Y")
+    timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M")
     train_cfg["run_name"] = f"{train_cfg['run_name']}_{timestamp}"
 
     # INFO: config modification

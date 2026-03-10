@@ -86,7 +86,7 @@ class FastFrankaEnv(VecEnv):
         self.last_actions = torch.zeros(self.num_envs, self.num_actions, device=self.device)
 
         # WARN: This property will be deprecated in future.  
-        self.success_range : torch.Tensor = torch.tensor(0.087, device=self.device) 
+        self.lift_threshold : torch.Tensor = torch.tensor(0.05, device=self.device) 
 
         # INFO: __INIT__ GENESIS ENGINE
         gs.init(
@@ -146,6 +146,7 @@ class FastFrankaEnv(VecEnv):
         self.left_finger = self.robot.get_link("left_finger")
         self.right_finger = self.robot.get_link("right_finger")
         self.hand_link = self.robot.get_link("hand")
+        self.fingertip_offset = torch.tensor([0.0, 0.0, 0.115], device=self.device).repeat(self.num_envs, 1)
 
         # add target to the scene
         self.init_target_pos = torch.tensor([0.5, 0.5, 0.0], device=self.device)
@@ -180,22 +181,26 @@ class FastFrankaEnv(VecEnv):
 
         # NOTE: init target params
         lower_bound, upper_bound = self.target.get_AABB(envs_idx=0)
-        self.init_target_pos[2] = (upper_bound[2] - lower_bound[2]) / 2.0
+        self.init_target_z = (upper_bound[2] - lower_bound[2]) / 2.0
+        self.init_target_pos[2] = self.init_target_z
         self.target_pos = tuple(self.init_target_pos)
         self.target.set_pos(self.init_target_pos)
 
         # NOTE: init debug visualization
 
         self.analyze_robot()
-        if show_viewer:
-            # self._init_vis_debug()
+        if self.show_viewer:
+            self._init_vis_debug()
             # self._init_spawn_vis()
             # self._init_success_sphere_vis()
             pass
 
         self.nan_counter = 0
-
         self.obs_buf = torch.zeros(self.num_envs, self.num_obs, device=self.device, dtype=torch.float32)
+
+        # dls_ik
+        lambda_val = 0.01
+        self.lambda_matrix = (lambda_val**2) * torch.eye(n=6, device=self.device)
 
     # INFO: INIT HELPERS
     @torch.inference_mode()
@@ -392,7 +397,7 @@ class FastFrankaEnv(VecEnv):
     def _init_success_sphere_vis(self, n_lat: int = 4, n_lon: int = 8):
         """Precomputes unit-sphere wireframe segments, scaled by success_range."""
         try:
-            r = self.success_range
+            r = self.lift_threshold
             segments_s, segments_e = [], []
 
             # Latitude rings (horizontal circles at different heights)
@@ -429,7 +434,7 @@ class FastFrankaEnv(VecEnv):
     @torch.no_grad()
     def _debug_vis(self):
         try:
-            ee_pos = (self.robot.get_link("left_finger").get_pos() + self.robot.get_link("right_finger").get_pos()) / 2.0
+            ee_pos = self._get_ee_pos()
             target_pos = self.target.get_pos()
             num_rendered = self.vis_offsets.shape[0]
 
@@ -449,52 +454,76 @@ class FastFrankaEnv(VecEnv):
                 )
 
                 # INFO: Spawn area circles (precomputed, no alloc)
-                for s, e in zip(self.spawn_inner_starts, self.spawn_inner_ends):
-                    self.scene.draw_debug_line(start=s + offset_xy, end=e + offset_xy, color=(0.3, 0.3, 1.0))
-
-                for s, e in zip(self.spawn_outer_starts, self.spawn_outer_ends):
-                    self.scene.draw_debug_line(start=s + offset_xy, end=e + offset_xy, color=(0.0, 0.5, 1.0))
+                # for s, e in zip(self.spawn_inner_starts, self.spawn_inner_ends):
+                #     self.scene.draw_debug_line(start=s + offset_xy, end=e + offset_xy, color=(0.3, 0.3, 1.0))
+                #
+                # for s, e in zip(self.spawn_outer_starts, self.spawn_outer_ends):
+                #     self.scene.draw_debug_line(start=s + offset_xy, end=e + offset_xy, color=(0.0, 0.5, 1.0))
 
                 # INFO: SUCCESS SPHERE AROUND TARGET
                 # Color shifts green→red based on current distance
-                for s, e in zip(self.sphere_starts, self.sphere_ends):
-                    self.scene.draw_debug_line(
-                        start=s + t_pos,
-                        end=e   + t_pos,
-                        color=(1.0, 0.0, 0.0),
-                    )
+                # for s, e in zip(self.sphere_starts, self.sphere_ends):
+                #     self.scene.draw_debug_line(
+                #         start=s + t_pos,
+                #         end=e   + t_pos,
+                #         color=(1.0, 0.0, 0.0),
+                #     )
         except Exception as e:
             logger.exception(f"[DEBUG VIS ERROR] {e}") 
 
     # INFO: CORE API
     @torch.no_grad()
+    def _get_ee_pos(self) -> torch.Tensor:
+        """
+        Calculates the exact world-space position of the fingertips (TCP) 
+        by applying a 10.34cm Z-offset to the hand_link's current pose.
+        """
+        hand_pos = self.hand_link.get_pos()    # (num_envs, 3)
+        hand_quat = self.hand_link.get_quat()  # (num_envs, 4)
+
+        # Exact distance from Panda hand origin to fingertips is +0.1034m on Z
+
+        # Fast quaternion rotation formula: v' = v + 2 * cross(u, cross(u, v) + w * v)
+        w = hand_quat[:, 0:1]
+        u = hand_quat[:, 1:4]
+        
+        uv = torch.cross(u, self.fingertip_offset, dim=1)
+        uuv = torch.cross(u, uv, dim=1)
+        
+        # The world-space rotation of the offset
+        rotated_offset = self.fingertip_offset + 2.0 * (w * uv + uuv)
+
+        # Hand position + Rotated offset = Fingertip position
+        return hand_pos + rotated_offset 
+
+    @torch.no_grad()
     def _dls_ik(self, action: torch.Tensor) -> torch.Tensor:
-        """
-        Damped least squares inverse kinematics
-        """
-        delta_pose = action[:, :6]
-        lambda_val = 0.01
+        delta_pose = action[:, :6].unsqueeze(-1)
         jacobian = self.robot.get_jacobian(link=self.hand_link)
         jacobian_T = jacobian.transpose(1, 2)
-        lambda_matrix = (lambda_val**2) * torch.eye(n=jacobian.shape[1], device=self.device)
-        delta_joint_pos = (
-            jacobian_T @ torch.inverse(jacobian @ jacobian_T + lambda_matrix) @ delta_pose.unsqueeze(-1)
-        ).squeeze(-1)
-        return self.robot.get_qpos() + delta_joint_pos
+        
+        # Matrix A for solving: (J * J^T + lambda*I)
+        A = jacobian @ jacobian_T + self.lambda_matrix
+        
+        # Solve A * X = delta_pose  -> X = inv(A) * delta_pose
+        X = torch.linalg.solve(A, delta_pose)
+        
+        # Final joint deltas
+        delta_joint_pos = (jacobian_T @ X).squeeze(-1)
+        
+        return self.robot.get_dofs_position() + delta_joint_pos 
 
     @torch.no_grad()
     def get_observations(self):
         """Fetches the current state of the robot and target."""
         dofs_pos = self.robot.get_dofs_position()
         dofs_vel = self.robot.get_dofs_velocity()
-        ee_pos = (
-            self.left_finger.get_pos() 
-            + self.right_finger.get_pos()
-        ) / 2.0
+        ee_pos = self._get_ee_pos()
         ee_quat = self.hand_link.get_quat()
         ee_lin_vel = self.hand_link.get_vel()
         ee_ang_vel = self.hand_link.get_ang()
         target_pos = self.target.get_pos()
+        target_quat = self.target.get_quat()
         ee_to_target_vector = target_pos - ee_pos
         dist = torch.norm(ee_to_target_vector, dim=-1, keepdim=True)
         gripper_width = (dofs_pos[:, 7] + dofs_pos[:, 8]).unsqueeze(-1)
@@ -508,44 +537,69 @@ class FastFrankaEnv(VecEnv):
             ee_lin_vel,             # (n_envs, 3)
             ee_ang_vel,             # (n_envs, 3)
             target_pos,             # (n_envs, 3)
+            target_quat,            # (n_envs, 4)
             ee_to_target_vector,    # (n_envs, 3)
             dist,                   # (n_envs, 1)
             gripper_width,          # (n_envs, 1)
-        ], dim=-1, out=self.obs_buf)                  # (n_envs, 39)
+        ], dim=-1, out=self.obs_buf)                  # (n_envs, 43)
 
         return TensorDict({"policy": self.obs_buf.clone()}, batch_size=[self.num_envs], device=self.device) 
 
     @torch.compile(fullgraph=True, dynamic=False)
     def _compute_reward(self, obs_tensor: torch.Tensor, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Calculates rewards and termination conditions purely from observations."""
-        ee_lin_vel = obs_tensor[:, 25:28]
+        ee_lin_vel          = obs_tensor[:, 25:28]
+        target_pos          = obs_tensor[:, 31:34]
         ee_to_target_vector = obs_tensor[:, 34:37]
-        dist = obs_tensor[:, 37]
+        dist                = obs_tensor[:, 37]
+        gripper_width       = obs_tensor[:, 38]
 
         # NOTE: Distance Reward (Linear + Exponential)
-        distance_reward = -5 * dist + torch.exp(-10 * dist)
+        distance_reward = -10 * dist + torch.exp(-100 * dist)
+        # logger.debug(f"distance_reward: {distance_reward}")
 
         # NOTE: Approach bonus: reward moving toward the target
         # Unsqueeze dist to (n_envs, 1) to match ee_lin_vel's shape for division
         directional_unit_vector = ee_to_target_vector / (dist.unsqueeze(-1) + 1e-6)
-        approach_reward = (
-            (ee_lin_vel * directional_unit_vector).sum(dim=-1).clamp(min=0.0)
-        )
+        approach_reward = (ee_lin_vel * directional_unit_vector).sum(dim=-1).clamp(min=0.0)
+        # logger.debug(f"approach_reward: {0.3*approach_reward}")
 
         # TODO: Action smoothing
         # action_delta = actions - self.last_actions
         # smoothness_reward = - torch.norm(action_delta, dim=-1) * 0.05
 
+        # NOTE: GRASP
+        # Only reward closing the gripper once the EE is close to the cube.
+        # proximity_gate goes 0→1 as dist goes 0.15→0.05.
+        proximity_gate = ((0.048 - dist) / (0.048 - 0.02)).clamp(0.0, 1.0)
+
+        # gripper_width ~0.08 when open, ~0.0 when closed
+        # Normalise so 1.0 = fully closed, 0.0 = fully open
+        gripper_closed = (1.0 - gripper_width / 0.08).clamp(0.0, 1.0)
+        grasp_reward = proximity_gate * gripper_closed
+        # logger.debug(f"grasp_reward: {grasp_reward}")
+
+        # NOTE: LIFT
+        cube_z = target_pos[:, 2]
+        lift_height = (cube_z - self.init_target_z).clamp(min=0.0)
+        lift_reward = lift_height * 20.0
+        grasp_gate = (gripper_closed * proximity_gate).clamp(0.0, 1.0)
+        lift_reward = lift_reward * grasp_gate
+
         # NOTE: Success reward
-        is_success = dist < self.success_range
+        is_success = lift_height > self.lift_threshold
         success_reward = is_success.float() * 100.0
+        # logger.debug(f"success_reward: {success_reward}")
 
         # NOTE: time penalty: encouraging to find optimal path
         time_penalty = -0.5
+        # logger.debug(f"time_penalty: {time_penalty}")
 
         rewards = (
-            2.0 * distance_reward
-            + 0.5 * approach_reward
+            1.0 * distance_reward
+            + 0.3 * approach_reward
+            + 1.0 * grasp_reward
+            + 5.0 * lift_reward
             + success_reward
             + time_penalty
         )
@@ -562,7 +616,7 @@ class FastFrankaEnv(VecEnv):
         # env10_deltas_per_joint = delta_actions[0].abs()
         # mean_deltas_per_joint = delta_actions.abs().mean(dim=0)
         
-        self.last_actions = actions.clone()
+        self.last_actions.copy_(actions)
 
         # NOTE: Apply actions
         current_dof_pos = self.robot.get_dofs_position()
@@ -613,7 +667,7 @@ class FastFrankaEnv(VecEnv):
 
         # Debug Visualization (Optional)
         if self.show_viewer:
-            # self._debug_vis()
+            self._debug_vis()
             pass
 
         # NOTE: OBSERVATION & REWARD
@@ -663,16 +717,17 @@ class FastFrankaEnv(VecEnv):
             # infos["target_pos"] = target_dofs_pos
 
         # NOTE: HANDLE RESETS (Only update obs if necessary)
-        if total_dones.any():
-            env_ids = total_dones.nonzero(as_tuple=False).flatten()
+        env_ids = total_dones.nonzero(as_tuple=False).flatten()
+        if len(env_ids) > 0:
             self.reset_at(env_ids)
             self.episode_length_buf[env_ids] = 0
 
             terminal_dist = dist[total_dones]  # only the envs that just ended
 
-            infos["episode"]["terminal_mean_distance"] = terminal_dist.mean().item()
-            infos["episode"]["success_rate"] = (terminal_dist < self.success_range).float().mean().item()
-            infos["episode"]["nan_count"] = self.nan_counter
+            infos["episode"]["debug/terminal_mean_distance"] = terminal_dist.mean().item()
+            infos["episode"]["debug/success_rate"] = (terminal_dist < self.lift_threshold).float().mean().item()
+            infos["episode"]["debug/nan_count"] = self.nan_counter
+            infos["episode"]["debug/env_reset"] = len(env_ids)
             
             # ONLY fetch observations a second time if environments were teleported
             # RSL-RL requires the returned 'obs' to reflect the post-reset state
@@ -701,7 +756,7 @@ class FastFrankaEnv(VecEnv):
 
             x = r * torch.cos(theta)
             y = r * torch.sin(theta)
-            z = torch.full((n,), self.init_target_pos[2].item(), device=self.device)
+            z = torch.full((n,), self.init_target_z, device=self.device)
 
             self.target_pos = (x, y, z)
             random_target_pos = torch.stack(self.target_pos, dim=1)
