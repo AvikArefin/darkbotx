@@ -21,7 +21,19 @@ Hiwonder_controller:
     type: effort_controllers/JointPositionController
     joint: Revolute 16
     pid: {p: 100.0, i: 0.01, d: 10.0}
-  Revolute 17_position_controller:
+  Revolute 19_position_controller:
     type: effort_controllers/JointPositionController
-    joint: Revolute 17
+    joint: Revolute 19
+    pid: {p: 100.0, i: 0.01, d: 10.0}
+  Slider 20_position_controller:
+    type: effort_controllers/JointPositionController
+    joint: Slider 20
+    pid: {p: 100.0, i: 0.01, d: 10.0}
+  Slider 21_position_controller:
+    type: effort_controllers/JointPositionController
+    joint: Slider 21
+    pid: {p: 100.0, i: 0.01, d: 10.0}
+  Revolute 22_position_controller:
+    type: effort_controllers/JointPositionController
+    joint: Revolute 22
     pid: {p: 100.0, i: 0.01, d: 10.0}
