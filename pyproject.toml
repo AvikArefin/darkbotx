@@ -5,12 +5,12 @@ description = "A visionless grasping robot"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "genesis-world>=0.4.3",
+    "genesis-world>=0.4.4",
     "mapbox-earcut>=2.0.0",
     "numpy-stl>=3.2.0",
     "urdf-parser-py>=0.0.4",
     "pyqt6>=6.10.2",
-    "rsl-rl-lib>=4.0.1",
+    "rsl-rl-lib>=5.0.1",
     "torch>=2.10.0",
     "tensorboard>=2.20.0",
     "wandb>=0.25.0",

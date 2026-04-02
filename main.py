@@ -92,10 +92,9 @@ train_cfg = {
         "hidden_dims": [256, 128, 64],                  # NOTE: [64,64] | [256,128,64] | [512,256,128]
         "activation": "elu",                            # NOTE: "elu" | "relu" | "tanh" | "selu"
         "obs_normalization": True,                      # NOTE: True | False
-        "stochastic": True,                             # NOTE: True (Actor) | False (Critic)
-        "init_noise_std": 1.0,                          # NOTE: 0.5 | 0.8 | 1.0 | 1.5
-        "noise_std_type": "scalar",                     # NOTE: "scalar" | "log"
-        "state_dependent_std": False,                   # NOTE: True | False
+        "distribution_cfg": {
+            "class_name": "GaussianDistribution"
+        }
     },
 
     # --- Critic ---
@@ -104,7 +103,6 @@ train_cfg = {
         "hidden_dims": [256, 128, 64],                  # NOTE: [64,64] | [256,128,64] | [512,256,128]
         "activation": "elu",                            # NOTE: "elu" | "relu" | "tanh" | "selu"
         "obs_normalization": True,                      # NOTE: True | False
-        "stochastic": False,                            # NOTE: always False for Critic
     },
 
     # --- Algorithm (PPO) ---
