@@ -1,4 +1,4 @@
-from code.motor import RobotArm
+from motor import RobotArm
 import time
 import random
 

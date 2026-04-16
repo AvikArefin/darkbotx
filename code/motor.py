@@ -12,12 +12,12 @@ class RobotArm:
     # Adjust the pulse values for Channel 1 (or whichever is the DSS-M15S)
     # until 180 degrees on your protractor matches 180 in code.
     SERVO_CONFIG: dict[int, tuple[int, tuple[int, int]]] = {
-        0: (270, (500, 2500)),  # Gripper
+        0: (270, (490, 2660)),  # Gripper
         1: (270, (450, 2650)),  # Joint 1: Adjusted for 270 motor undershoot
-        2: (180, (500, 2500)),  # Joint 2
-        3: (180, (500, 2500)),  # Joint 3
-        4: (180, (500, 2500)),  # Joint 4
-        5: (180, (500, 2500)),  # Joint 5
+        2: (180, (500, 2650)),  # Joint 2
+        3: (180, (500, 2700)),  # Joint 3
+        4: (180, (500, 2600)),  # Joint 4
+        5: (180, (500, 2600)),  # Joint 5
     }
 
     HOME_POSITIONS: dict[int, int] = {
