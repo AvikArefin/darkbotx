@@ -57,32 +57,22 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
-  <transmission name="Slider 20_tran">
+  <transmission name="Slider 29_tran">
     <type>transmission_interface/SimpleTransmission</type>
-    <joint name="Slider 20">
+    <joint name="Slider 29">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     </joint>
-    <actuator name="Slider 20_actr">
+    <actuator name="Slider 29_actr">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
-  <transmission name="Slider 21_tran">
+  <transmission name="Slider 31_tran">
     <type>transmission_interface/SimpleTransmission</type>
-    <joint name="Slider 21">
+    <joint name="Slider 31">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
     </joint>
-    <actuator name="Slider 21_actr">
-      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-      <mechanicalReduction>1</mechanicalReduction>
-    </actuator>
-  </transmission>
-  <transmission name="Revolute 22_tran">
-    <type>transmission_interface/SimpleTransmission</type>
-    <joint name="Revolute 22">
-      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
-    </joint>
-    <actuator name="Revolute 22_actr">
+    <actuator name="Slider 31_actr">
       <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
@@ -127,19 +117,13 @@
     <mu2>0.2</mu2>
     <selfCollide>true</selfCollide>
   </gazebo>
-  <gazebo reference="left_finger_1">
-    <material>Gazebo/Silver</material>
-    <mu1>0.2</mu1>
-    <mu2>0.2</mu2>
-    <selfCollide>true</selfCollide>
-  </gazebo>
   <gazebo reference="right_finger_1">
     <material>Gazebo/Silver</material>
     <mu1>0.2</mu1>
     <mu2>0.2</mu2>
     <selfCollide>true</selfCollide>
   </gazebo>
-  <gazebo reference="gear_link_1">
+  <gazebo reference="left_finger_1">
     <material>Gazebo/Silver</material>
     <mu1>0.2</mu1>
     <mu2>0.2</mu2>
@@ -167,7 +151,7 @@
   </link>
   <link name="second_link_1">
     <inertial>
-      <origin xyz="0.001515476232598548 -1.6684843491224233e-05 0.02480943005786166" rpy="0 0 0"/>
+      <origin xyz="0.0015155642244600231 1.7928644227699353e-06 0.024809430057861744" rpy="0 0 0"/>
       <mass value="0.37909012139587217"/>
       <inertia ixx="0.000161" iyy="0.00016" izz="0.000201" ixy="0.0" iyz="0.0" ixz="-6e-06"/>
     </inertial>
@@ -187,19 +171,19 @@
   </link>
   <link name="third_link_1">
     <inertial>
-      <origin xyz="-0.027343180150573892 0.029293876913652088 0.04316047625280414" rpy="0 0 0"/>
+      <origin xyz="-0.027698296621942956 0.04765413999012262 0.020748432672287473" rpy="0 0 0"/>
       <mass value="0.16226233466168985"/>
-      <inertia ixx="0.000203" iyy="0.000231" izz="0.00016" ixy="0.0" iyz="-8.7e-05" ixz="-1e-06"/>
+      <inertia ixx="0.000203" iyy="0.000132" izz="0.00026" ixy="-0.0" iyz="-6.9e-05" ixz="-0.0"/>
     </inertial>
     <visual>
-      <origin xyz="-0.027918 -0.045963 -0.095801" rpy="0 0 0"/>
+      <origin xyz="-0.028042 -0.046304 -0.095801" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/third_link_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.027918 -0.045963 -0.095801" rpy="0 0 0"/>
+      <origin xyz="-0.028042 -0.046304 -0.095801" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/third_link_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -207,19 +191,19 @@
   </link>
   <link name="fourth_link_1">
     <inertial>
-      <origin xyz="-0.025886175644017836 -0.012863720404565696 0.019469646301894933" rpy="0 0 0"/>
+      <origin xyz="-0.02572686990818987 0.004053928250455058 0.023157892432834615" rpy="0 0 0"/>
       <mass value="0.2923899366437736"/>
-      <inertia ixx="0.000208" iyy="0.000208" izz="0.000139" ixy="1e-06" iyz="8.6e-05" ixz="-1e-06"/>
+      <inertia ixx="0.000208" iyy="0.00026" izz="8.7e-05" ixy="-0.0" iyz="-3.2e-05" ixz="-2e-06"/>
     </inertial>
     <visual>
-      <origin xyz="-0.028625 -0.103903 -0.182163" rpy="0 0 0"/>
+      <origin xyz="-0.028042 -0.141658 -0.137318" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/fourth_link_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.028625 -0.103903 -0.182163" rpy="0 0 0"/>
+      <origin xyz="-0.028042 -0.141658 -0.137318" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/fourth_link_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -227,19 +211,19 @@
   </link>
   <link name="fifth_link_1">
     <inertial>
-      <origin xyz="0.024573606883266846 -0.020492170669535084 -0.009450750798881968" rpy="0 0 0"/>
+      <origin xyz="0.02482151135065362 -0.01754474473381723 0.013754851957438224" rpy="0 0 0"/>
       <mass value="0.29380221652800204"/>
-      <inertia ixx="0.000201" iyy="0.000102" izz="0.000168" ixy="-8e-06" iyz="3e-06" ixz="-1e-06"/>
+      <inertia ixx="0.000201" iyy="0.000157" izz="0.000113" ixy="-4e-06" iyz="2.4e-05" ixz="5e-06"/>
     </inertial>
     <visual>
-      <origin xyz="0.028518 -0.05501 -0.255576" rpy="0 0 0"/>
+      <origin xyz="0.0285 -0.157021 -0.224566" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/fifth_link_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.028518 -0.05501 -0.255576" rpy="0 0 0"/>
+      <origin xyz="0.0285 -0.157021 -0.224566" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/fifth_link_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -247,81 +231,61 @@
   </link>
   <link name="sixth_link_1">
     <inertial>
-      <origin xyz="-0.00040907580167635384 -0.046363022962390074 -0.0038289785318220693" rpy="0 0 0"/>
+      <origin xyz="-5.564917727016649e-05 -0.024329962527568846 0.039653341169548384" rpy="0 0 0"/>
       <mass value="0.5747761409814244"/>
-      <inertia ixx="0.000539" iyy="0.000272" izz="0.000341" ixy="-3e-06" iyz="-5.3e-05" ixz="0.0"/>
+      <inertia ixx="0.000539" iyy="0.000285" izz="0.000328" ixy="-9e-06" iyz="5.9e-05" ixz="-2e-06"/>
     </inertial>
     <visual>
-      <origin xyz="0.004028 0.009607 -0.255463" rpy="0 0 0"/>
+      <origin xyz="0.003224 -0.127901 -0.28191" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/sixth_link_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.004028 0.009607 -0.255463" rpy="0 0 0"/>
+      <origin xyz="0.003224 -0.127901 -0.28191" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/sixth_link_1.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-  </link>
-  <link name="left_finger_1">
-    <inertial>
-      <origin xyz="0.22614187622313073 -0.16382465810915833 -0.07528218342616169" rpy="0 0 0"/>
-      <mass value="0.07506411850762539"/>
-      <inertia ixx="3.9e-05" iyy="2.9e-05" izz="2e-05" ixy="-0.0" iyz="-1.2e-05" ixz="0.0"/>
-    </inertial>
-    <visual>
-      <origin xyz="0.239188 -0.06338 -0.290008" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://Hiwonder_description/meshes/left_finger_1.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-      <material name="silver"/>
-    </visual>
-    <collision>
-      <origin xyz="0.239188 -0.06338 -0.290008" rpy="0 0 0"/>
-      <geometry>
-        <mesh filename="package://Hiwonder_description/meshes/left_finger_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
   <link name="right_finger_1">
     <inertial>
-      <origin xyz="0.23353711603941524 -0.16423216885509756 0.009285417328035783" rpy="0 0 0"/>
+      <origin xyz="0.3334698569050242 -0.00907267411723324 -0.01453310351807563" rpy="0 0 0"/>
       <mass value="0.07962832262347441"/>
-      <inertia ixx="4e-05" iyy="3.6e-05" izz="2.7e-05" ixy="-8e-06" iyz="1.2e-05" ixz="8e-06"/>
+      <inertia ixx="4.1e-05" iyy="3.8e-05" izz="2.4e-05" ixy="3e-06" iyz="-1.2e-05" ixz="1e-05"/>
     </inertial>
     <visual>
-      <origin xyz="0.239287 -0.063365 -0.267308" rpy="0 0 0"/>
+      <origin xyz="0.336601 -0.108453 -0.384364" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/right_finger_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.239287 -0.063365 -0.267308" rpy="0 0 0"/>
+      <origin xyz="0.336601 -0.108453 -0.384364" rpy="0 0 0"/>
       <geometry>
         <mesh filename="package://Hiwonder_description/meshes/right_finger_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
-  <link name="gear_link_1">
+  <link name="left_finger_1">
     <inertial>
-      <origin xyz="-6.661216082451751e-05 -0.008319512177334093 7.260586570295713e-05" rpy="0 0 0"/>
-      <mass value="0.025254124812982604"/>
-      <inertia ixx="2e-06" iyy="1e-06" izz="2e-06" ixy="-0.0" iyz="0.0" ixz="0.0"/>
+      <origin xyz="0.0021544872810023447 -0.02302381129656561 0.005335867881885781" rpy="0 0 0"/>
+      <mass value="0.07506411850762539"/>
+      <inertia ixx="3.9e-05" iyy="1.2e-05" izz="3.7e-05" ixy="-1e-06" iyz="3e-06" ixz="0.0"/>
     </inertial>
     <visual>
-      <origin xyz="0.004496 0.068042 -0.245637" rpy="0 0 0"/>
+      <origin xyz="0.014763 -0.085594 -0.345323" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://Hiwonder_description/meshes/gear_link_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://Hiwonder_description/meshes/left_finger_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.004496 0.068042 -0.245637" rpy="0 0 0"/>
+      <origin xyz="0.014763 -0.085594 -0.345323" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://Hiwonder_description/meshes/gear_link_1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://Hiwonder_description/meshes/left_finger_1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -333,51 +297,46 @@
     <limit upper="1.570796" lower="-1.570796" effort="100" velocity="100"/>
   </joint>
   <joint name="Revolute 14" type="revolute">
-    <origin xyz="0.027918 -0.010341 0.035" rpy="0 0 0"/>
+    <origin xyz="0.028042 -0.01 0.035" rpy="0 0 0"/>
     <parent link="second_link_1"/>
     <child link="third_link_1"/>
-    <axis xyz="-0.999926 0.012192 -0.0"/>
+    <axis xyz="-1.0 -0.0 -0.0"/>
     <limit upper="0.785398" lower="-2.094395" effort="100" velocity="100"/>
   </joint>
   <joint name="Revolute 15" type="revolute">
-    <origin xyz="0.000707 0.05794 0.086362" rpy="0 0 0"/>
+    <origin xyz="0.0 0.095354 0.041517" rpy="0 0 0"/>
     <parent link="third_link_1"/>
     <child link="fourth_link_1"/>
-    <axis xyz="-0.999926 0.012192 -0.0"/>
+    <axis xyz="-1.0 -0.0 -0.0"/>
     <limit upper="2.879793" lower="-0.261799" effort="100" velocity="100"/>
   </joint>
   <joint name="Revolute 16" type="revolute">
-    <origin xyz="-0.057143 -0.048893 0.073413" rpy="0 0 0"/>
+    <origin xyz="-0.056542 0.015363 0.087248" rpy="0 0 0"/>
     <parent link="fourth_link_1"/>
     <child link="fifth_link_1"/>
-    <axis xyz="0.999926 -0.012192 0.0"/>
+    <axis xyz="1.0 0.0 0.0"/>
     <limit upper="0.698132" lower="-2.443461" effort="100" velocity="100"/>
   </joint>
-  <joint name="Revolute 19" type="continuous">
-    <origin xyz="0.02449 -0.064617 -0.000113" rpy="0 0 0"/>
+  <joint name="Revolute 19" type="revolute">
+    <origin xyz="0.025276 -0.02912 0.057344" rpy="0 0 0"/>
     <parent link="fifth_link_1"/>
     <child link="sixth_link_1"/>
-    <axis xyz="0.008 0.99993 -0.008671"/>
+    <axis xyz="-0.004192 0.443437 -0.896296"/>
+    <limit upper="3.141593" lower="0.0" effort="100" velocity="100"/>
   </joint>
-  <joint name="Slider 20" type="prismatic">
-    <origin xyz="-0.23516 0.072987 0.034545" rpy="0 0 0"/>
-    <parent link="sixth_link_1"/>
-    <child link="left_finger_1"/>
-    <axis xyz="-0.004274 0.008705 0.999953"/>
-    <limit upper="0.015" lower="-0.015" effort="100" velocity="100"/>
-  </joint>
-  <joint name="Slider 21" type="prismatic">
-    <origin xyz="-0.235259 0.072972 0.011845" rpy="0 0 0"/>
+  <joint name="Slider 29" type="prismatic">
+    <origin xyz="-0.333377 -0.019448 0.102454" rpy="0 0 0"/>
     <parent link="sixth_link_1"/>
     <child link="right_finger_1"/>
-    <axis xyz="-0.004274 0.008705 0.999953"/>
-    <limit upper="0.015" lower="-0.015" effort="100" velocity="100"/>
+    <axis xyz="0.045686 0.895452 0.442806"/>
+    <limit upper="0.01" lower="-0.01" effort="100" velocity="100"/>
   </joint>
-  <joint name="Revolute 22" type="revolute">
-    <origin xyz="-0.000468 -0.058435 -0.009826" rpy="0 0 0"/>
+  <joint name="Slider 31" type="prismatic">
+    <origin xyz="-0.011539 -0.042307 0.063413" rpy="0 0 0"/>
     <parent link="sixth_link_1"/>
-    <child link="gear_link_1"/>
-    <axis xyz="0.008 0.99993 -0.008671"/>
-    <limit upper="5.585054" lower="0.872665" effort="100" velocity="100"/>
+    <child link="left_finger_1"/>
+    <axis xyz="0.045686 0.895452 0.442806"/>
+    <limit upper="0.01" lower="-0.01" effort="100" velocity="100"/>
+    <mimic joint="Slider 29" multiplier="-1.0" offset="0.0" />
   </joint>
 </robot>
