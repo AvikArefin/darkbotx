@@ -20,3 +20,11 @@ dependencies = [
     "grpcio!=1.78.1",
     "rpi-lgpio>=0.6; sys_platform == 'linux' and platform_machine == 'aarch64'",
 ]
+
+# For ty (Type checking & LSP)
+[tool.ty.environment]
+extra-paths = ["code"]
+
+# For Ruff (Linting)
+[tool.ruff]
+src = ["code"]
