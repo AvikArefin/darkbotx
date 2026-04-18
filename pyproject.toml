@@ -18,6 +18,5 @@ dependencies = [
     "adafruit-circuitpython-ads1x15>=3.0.2",
     "tabulate>=0.10.0",
     "grpcio!=1.78.1",
+    "rpi-lgpio>=0.6; sys_platform == 'linux' and platform_machine == 'aarch64'",
 ]
-
-# "rpi-lgpio>=0.6" is required to be added but version does not match
