@@ -3,6 +3,19 @@ import random
 
 from motor import RobotArm
 
+def adapter_angle_to_width(angle: float, max_angle: float = 270.0, min_angle: float = 0.0, max_width: float = 72.0, min_width: float = 32.0) -> float:
+    """
+    Converts the Channel 0 servo angle to a physical width (mm).
+    MAX (270°) -> 72mm
+    MIN (0°) -> 32mm
+    """
+    # Ensure angle is within bounds
+    angle = max(min_angle, min(max_angle, angle))
+    
+    # Linear interpolation
+    width = min_width + (angle - min_angle) * ((max_width - min_width) / (max_angle - min_angle))
+    return width
+
 def read_simulated_sensors(current_angle: float) -> tuple[float, float]:
     """
     Simulates two flex sensors.
@@ -30,11 +43,12 @@ def read_simulated_sensors(current_angle: float) -> tuple[float, float]:
     
     return s1, s2
 
-def execute_scanning_sequence(arm, n: int) -> dict[float, dict[str, float]]:
+def execute_scanning_sequence(arm : RobotArm, n: int) -> list[tuple[float, float, str]]:
     widest_angle = 270.0
     closed_angle = 0.0
     
-    scan_results = {}
+    # List to hold the formatted (angle, width, side) tuples
+    scan_results = []
     
     print("Initializing gripper to widest position...")
     arm.move_smooth(0, widest_angle)
@@ -92,11 +106,24 @@ def execute_scanning_sequence(arm, n: int) -> dict[float, dict[str, float]]:
 
         print(f"Final Stopped Angle of Channel 0: {current_ch0_angle:.1f}°")
         
-        scan_results[round(ch1_target_angle, 2)] = {
-            's1_trigger': round(s1_trigger_angle, 2) if s1_trigger_angle else None,
-            's2_trigger': round(s2_trigger_angle, 2) if s2_trigger_angle else None,
-            'stop_angle': round(current_ch0_angle, 2)
-        }
+        # Package the data points for this angle
+        ch1_rounded = round(ch1_target_angle, 2)
+        
+        # If both trigger at the exact same time
+        if (s1_trigger_angle is not None and 
+            s2_trigger_angle is not None and 
+            s1_trigger_angle == s2_trigger_angle):
+            width = adapter_angle_to_width(s1_trigger_angle)
+            scan_results.append((ch1_rounded, round(width, 2), "both"))
+        else:
+            # If they triggered at different times, or if only one triggered
+            if s1_trigger_angle is not None:
+                width1 = adapter_angle_to_width(s1_trigger_angle)
+                scan_results.append((ch1_rounded, round(width1, 2), "left"))
+                
+            if s2_trigger_angle is not None:
+                width2 = adapter_angle_to_width(s2_trigger_angle)
+                scan_results.append((ch1_rounded, round(width2, 2), "right"))
         
         print("Opening Channel 0 to widest position...")
         arm.move_smooth(0, widest_angle)
@@ -106,11 +133,11 @@ def execute_scanning_sequence(arm, n: int) -> dict[float, dict[str, float]]:
     return scan_results
 
 if __name__ == "__main__":
-    my_arm = RobotArm()
-    final_data = execute_scanning_sequence(my_arm, n=3)
+    arm = RobotArm()
+    final_data = execute_scanning_sequence(arm, n=3)
     
-    print("\n--- Final Gathered Data ---")
-    for ch1_angle, data in final_data.items():
-        s1_val = f"{data['s1_trigger']:5.1f}°" if data['s1_trigger'] is not None else "None "
-        s2_val = f"{data['s2_trigger']:5.1f}°" if data['s2_trigger'] is not None else "None "
-        print(f"Channel 1 Angle: {ch1_angle:5.1f}° | S1 Trigger: {s1_val} | S2 Trigger: {s2_val} | Final Stop: {data['stop_angle']:5.1f}°")
+    print("\n--- Final Gathered Data (Ready for DarkBot) ---")
+    print("measurements = [")
+    for angle, width, side in final_data:
+        print(f"    ({angle:5.1f}, {width:5.2f}, \"{side}\"),")
+    print("]")

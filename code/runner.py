@@ -1,0 +1,68 @@
+import os
+
+# Import your hardware and sequence logic
+from motor import RobotArm
+from scanner import execute_scanning_sequence
+
+# Import your point processing and generation logic
+from pointnet import DarkBot, export_dented_to_stl, generate_urdf
+
+def main():
+    print("=== STARTING DARKBOT ORCHESTRATION PIPELINE ===")
+
+    # ---------------------------------------------------------
+    # STEP 1: Initialize Hardware
+    # ---------------------------------------------------------
+    print("\n[1/4] Initializing Robot Arm...")
+    my_arm = RobotArm()
+
+    # ---------------------------------------------------------
+    # STEP 2: Execute Hardware Scan
+    # ---------------------------------------------------------
+    print("\n[2/4] Executing Hardware Scan...")
+    
+    # Run the sequence (e.g., n=12 for a scan every 15 degrees)
+    live_measurements = execute_scanning_sequence(my_arm, n=12)
+
+    print(f"\nScan complete. Gathered {len(live_measurements)} data points:")
+    for m in live_measurements:
+        print(f"  -> {m}")
+
+    # ---------------------------------------------------------
+    # STEP 3: Process Point Cloud Data
+    # ---------------------------------------------------------
+    print("\n[3/4] Initializing PointNet (DarkBot) with Live Data...")
+    
+    # Object settings
+    height_val = 5.5
+    obj_name = "live_scanned_target"
+
+    # Instantiate the PointNet class using the live data directly!
+    darkbot = DarkBot(measurements=live_measurements, height=height_val)
+
+    # ---------------------------------------------------------
+    # STEP 4: Export STL and URDF
+    # ---------------------------------------------------------
+    print("\n[4/4] Generating 3D Meshes and URDF...")
+    
+    # Setup directory structure
+    folder_path = f"assets/{obj_name}"
+    os.makedirs(os.path.join(folder_path, "meshes"), exist_ok=True)
+
+    stl_path = os.path.join(folder_path, "meshes", f"{obj_name}.stl")
+    urdf_path = os.path.join(folder_path, f"{obj_name}.urdf")
+
+    # Generate files
+    export_dented_to_stl(darkbot, stl_path)
+    generate_urdf(stl_path, obj_name, scale=0.1, urdf_filepath=urdf_path)
+
+    print("\n=== PIPELINE COMPLETE ===")
+    
+    # ---------------------------------------------------------
+    # STEP 5: Visualize
+    # ---------------------------------------------------------
+    print("Launching visualization...")
+    darkbot.visualize()
+
+if __name__ == "__main__":
+    main()
