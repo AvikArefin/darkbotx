@@ -19,7 +19,7 @@ def main():
 
     print("\n[3/4] Initializing PointNet (DarkBot) with Live Data...")
     # Object settings
-    height_val = 5.5
+    height_val = 30
     obj_name = "live_scanned_target"
     # Instantiate the PointNet class using the live data directly!
     darkbot = DarkBot(measurements=live_measurements, height=height_val)
