@@ -1,23 +1,24 @@
 import time
 import logging
+from dataclasses import dataclass
 from adafruit_servokit import ServoKit
 
 logger = logging.getLogger(__name__)
 
+@dataclass(frozen=True)
+class ServoConfig:
+    min_pulse: int
+    max_pulse: int
+    max_angle: int = 180  # Most joints are 180, so it serves as the default
+
 class RobotArm:
-    # Default pulse used if a specific one isn't defined in the new config
-    DEFAULT_PULSE: tuple[int, int] = (500, 2500)
-    
-    # Updated SERVO_CONFIG to include (max_angle, (min_pulse, max_pulse))
-    # Adjust the pulse values for Channel 1 (or whichever is the DSS-M15S)
-    # until 180 degrees on your protractor matches 180 in code.
-    SERVO_CONFIG: dict[int, tuple[int, tuple[int, int]]] = {
-        0: (270, (490, 2660)),  # Gripper
-        1: (270, (450, 2650)),  # Joint 1: Adjusted for 270 motor undershoot
-        2: (180, (500, 2650)),  # Joint 2
-        3: (180, (500, 2700)),  # Joint 3
-        4: (180, (500, 2600)),  # Joint 4
-        5: (180, (500, 2600)),  # Joint 5
+    SERVO_CONFIG: dict[int, ServoConfig] = {
+        0: ServoConfig(490, 2660, max_angle=270),  # Gripper
+        1: ServoConfig(450, 2650), 
+        2: ServoConfig(500, 2650),                 # Joint 2 (180 max_angle)
+        3: ServoConfig(500, 2700),                 # Joint 3 (180 max_angle)
+        4: ServoConfig(500, 2600),                 # Joint 4 (180 max_angle)
+        5: ServoConfig(500, 2600),                 # Joint 5 (180 max_angle)
     }
 
     HOME_POSITIONS: dict[int, int] = {
@@ -47,12 +48,10 @@ class RobotArm:
                 print(f"{RED}{i}...{RESET}")
                 time.sleep(1)
                 
-            for ch, config in self.SERVO_CONFIG.items():
-                max_range, pulse_range = config
-                
-                # Apply the individual pulse width for this specific channel
-                self.kit.servo[ch].set_pulse_width_range(*pulse_range)
-                self.kit.servo[ch].actuation_range = max_range
+            for ch, servo in self.SERVO_CONFIG.items():
+                # Apply the properties directly from the dataclass
+                self.kit.servo[ch].set_pulse_width_range(servo.min_pulse, servo.max_pulse)
+                self.kit.servo[ch].actuation_range = servo.max_angle
                 
                 home_angle = self.HOME_POSITIONS.get(ch, 90)
                 self.kit.servo[ch].angle = home_angle
@@ -69,8 +68,8 @@ class RobotArm:
             logger.error(f"Cannot move channel {channel}: Arm uninitialized or invalid channel.")
             return False
 
-        # Accessing the max_angle from the new tuple structure
-        max_angle = self.SERVO_CONFIG[channel][0]
+        # Access max_angle cleanly from the dataclass instance
+        max_angle = self.SERVO_CONFIG[channel].max_angle
         safe_target = max(0.0, min(float(target_angle), float(max_angle)))
 
         if safe_target != target_angle:
@@ -85,9 +84,9 @@ class RobotArm:
         
         while abs(safe_target - current) > step_size:
             current += (step_size * direction)
-            self.kit.servo[channel].angle = current
+            self.kit.servo[channel].angle = current # type: ignore
             time.sleep(delay)
         
-        self.kit.servo[channel].angle = safe_target
+        self.kit.servo[channel].angle = safe_target # type: ignore
         self.current_angles[channel] = safe_target
         return True
