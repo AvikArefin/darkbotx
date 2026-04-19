@@ -7,17 +7,23 @@ from pointnet import DarkBot, export_dented_to_stl, generate_urdf
 def main():
     print("=== STARTING DARKBOT ORCHESTRATION PIPELINE ===")
 
-    print("\n[1/4] Initializing Robot Arm...")
+    print("\n[1/6] Initializing Robot Arm...")
     arm = RobotArm()
 
-    print("\n[2/4] Executing Hardware Scan...")
+    print("\n[2/6] Smooth Transition to Grab Position")
+    arm.go_grab_smooth()
+
+    print("\n[3/6] Executing Hardware Scan")
     # Run the sequence (e.g., n=12 for a scan every 15 degrees)
     live_measurements = scan_sequence(arm, slice=4)
     print(f"\nScan complete. Gathered {len(live_measurements)} data points:")
     for m in live_measurements:
         print(f"  -> {m}")
 
-    print("\n[3/4] Initializing PointNet (DarkBot) with Live Data...")
+    print("\n[4/6] Returning arm to HOME position...")
+    arm.go_home_smooth()
+
+    print("\n[5/6] Initializing PointNet (DarkBot) with Live Data...")
     # Object settings
     height_val = 30
     obj_name = "live_scanned_target"
@@ -25,7 +31,7 @@ def main():
     darkbot = DarkBot(measurements=live_measurements, height=height_val)
 
 
-    print("\n[4/4] Generating 3D Meshes and URDF...")
+    print("\n[6/6] Generating 3D Meshes and URDF...")
     # Setup directory structure
     folder_path = f"assets/{obj_name}"
     os.makedirs(os.path.join(folder_path, "meshes"), exist_ok=True)
