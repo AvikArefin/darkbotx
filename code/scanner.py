@@ -43,8 +43,8 @@ def read_simulated_sensors(current_angle: float) -> tuple[float, float]:
     
     return s1, s2
 
-def execute_scanning_sequence(arm : RobotArm, n: int) -> list[tuple[float, float, str]]:
-    widest_angle = 270.0
+def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
+    widest_angle = arm.SERVO_CONFIG[0].max_angle
     closed_angle = 0.0
     
     # List to hold the formatted (angle, width, side) tuples
@@ -54,10 +54,10 @@ def execute_scanning_sequence(arm : RobotArm, n: int) -> list[tuple[float, float
     arm.move_smooth(0, widest_angle)
     time.sleep(0.5)
 
-    for i in range(n):
-        ch1_target_angle = (i / n) * 180.0
+    for i in range(slice):
+        ch1_target_angle = (i / slice) * 180.0
         
-        print(f"\n--- Sequence {i+1}/{n} ---")
+        print(f"\n--- Sequence {i+1}/{slice} ---")
         print(f"Rotating Channel 1 to {ch1_target_angle:.1f}°")
         arm.move_smooth(1, ch1_target_angle)
         time.sleep(0.5)
@@ -100,7 +100,7 @@ def execute_scanning_sequence(arm : RobotArm, n: int) -> list[tuple[float, float
                     
             current_ch0_angle -= current_step
             
-            arm.kit.servo[0].angle = current_ch0_angle
+            arm.kit.servo[0].angle = current_ch0_angle # type: ignore
             arm.current_angles[0] = current_ch0_angle 
             time.sleep(0.02) 
 
@@ -134,7 +134,7 @@ def execute_scanning_sequence(arm : RobotArm, n: int) -> list[tuple[float, float
 
 if __name__ == "__main__":
     arm = RobotArm()
-    final_data = execute_scanning_sequence(arm, n=3)
+    final_data = scan_sequence(arm, slice=3)
     
     print("\n--- Final Gathered Data (Ready for DarkBot) ---")
     print("measurements = [")
