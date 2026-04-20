@@ -3,11 +3,11 @@ import random
 
 from motor import RobotArm
 
-def adapter_angle_to_width(angle: float, max_angle: float = 270.0, min_angle: float = 0.0, max_width: float = 72.0, min_width: float = 32.0) -> float:
+def adapter_angle_to_width(angle: float, max_angle: float = 250.0, min_angle: float = 0.0, max_width: float = 11.20, min_width: float = 6.2) -> float:
     """
-    Converts the Channel 0 servo angle to a physical width (mm).
-    MAX (270°) -> 72mm
-    MIN (0°) -> 32mm
+    Converts the FINGER servo angle to a physical width (mm).
+    MAX (250°) -> 11.2cm
+    MIN (0°)   -> 6.2cm
     """
     # Ensure angle is within bounds
     angle = max(min_angle, min(max_angle, angle))
@@ -43,27 +43,32 @@ def read_simulated_sensors(current_angle: float) -> tuple[float, float]:
     
     return s1, s2
 
+    
+GRIPPER_F = 0  # FOR ACTUAL USE 0, FOR TESTING USE 15
+GRIPPER_R = 1
+    
 def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
-    widest_angle = arm.SERVO_CONFIG[0].max_angle
+    # DO NOT CHANGE HOME_POSITION TO SERVO_CONFIG
+    home_angle = arm.HOME_POSITION[GRIPPER_F]
     closed_angle = 0.0
     
     # List to hold the formatted (angle, width, side) tuples
     scan_results = []
     
-    print("Initializing gripper to widest position...")
-    arm.move_smooth(0, widest_angle)
+    print("Initializing gripper FINGERS to home position...")
+    arm.move_smooth(GRIPPER_F, home_angle)
     time.sleep(0.5)
 
     for i in range(slice):
-        ch1_target_angle = (i / slice) * 180.0
+        gripper_r_target_angle = (i / slice) * 180.0
         
         print(f"\n--- Sequence {i+1}/{slice} ---")
-        print(f"Rotating Channel 1 to {ch1_target_angle:.1f}°")
-        arm.move_smooth(1, ch1_target_angle)
+        print(f"Rotating Gripper ROTOR to {gripper_r_target_angle:.1f}°")
+        arm.move_smooth(1, gripper_r_target_angle)
         time.sleep(0.5)
         
-        print("Closing gripper (Channel 0) and monitoring sensors...")
-        current_ch0_angle = widest_angle
+        print("Closing Gripper FINGER (Channel 0 or 15) and monitoring sensors...")
+        current_gripper_f_angle = home_angle
         
         normal_speed_step = 2.0
         slow_speed_step = 0.5
@@ -72,20 +77,20 @@ def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
         s1_trigger_angle = None
         s2_trigger_angle = None
         
-        while current_ch0_angle > closed_angle:
-            v1, v2 = read_simulated_sensors(current_ch0_angle)
+        while current_gripper_f_angle > closed_angle:
+            v1, v2 = read_simulated_sensors(current_gripper_f_angle)
             
             # Bounds check: Must stay between 2.5 and 3.4
             s1_out_of_bounds = not (2.5 <= v1 <= 3.4)
             s2_out_of_bounds = not (2.5 <= v2 <= 3.4)
             
             if s1_out_of_bounds and s1_trigger_angle is None:
-                s1_trigger_angle = current_ch0_angle
-                print(f"--> Sensor 1 Triggered at {current_ch0_angle:.1f}° (Value: {v1:.2f}V)")
+                s1_trigger_angle = current_gripper_f_angle
+                print(f"--> Sensor 1 Triggered at {current_gripper_f_angle:.1f}° (Value: {v1:.2f}V)")
                 
             if s2_out_of_bounds and s2_trigger_angle is None:
-                s2_trigger_angle = current_ch0_angle
-                print(f"--> Sensor 2 Triggered at {current_ch0_angle:.1f}° (Value: {v2:.2f}V)")
+                s2_trigger_angle = current_gripper_f_angle
+                print(f"--> Sensor 2 Triggered at {current_gripper_f_angle:.1f}° (Value: {v2:.2f}V)")
             
             if s1_trigger_angle is not None and s2_trigger_angle is not None:
                 print("--> STOP: Both sensors triggered. Stopping motor.")
@@ -98,16 +103,16 @@ def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
             else:
                 current_step = normal_speed_step
                     
-            current_ch0_angle -= current_step
+            current_gripper_f_angle -= current_step
             
-            arm.kit.servo[0].angle = current_ch0_angle # type: ignore
-            arm.current_angles[0] = current_ch0_angle 
+            arm.kit.servo[GRIPPER_F].angle = current_gripper_f_angle # type: ignore
+            arm.current_angles[GRIPPER_F] = current_gripper_f_angle 
             time.sleep(0.02) 
 
-        print(f"Final Stopped Angle of Channel 0: {current_ch0_angle:.1f}°")
+        print(f"Final Stopped Angle of FINGERS: {current_gripper_f_angle:.1f}°")
         
         # Package the data points for this angle
-        ch1_rounded = round(ch1_target_angle, 2)
+        ch1_rounded = round(gripper_r_target_angle, 2)
         
         # If both trigger at the exact same time
         if (s1_trigger_angle is not None and 
@@ -125,8 +130,8 @@ def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
                 width2 = adapter_angle_to_width(s2_trigger_angle)
                 scan_results.append((ch1_rounded, round(width2, 2), "right"))
         
-        print("Opening Channel 0 to widest position...")
-        arm.move_smooth(0, widest_angle)
+        print("Opening FINGERS to home position...")
+        arm.move_smooth(GRIPPER_F, home_angle)
         time.sleep(0.5) 
 
     print("\nScanning sequence completed.")

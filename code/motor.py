@@ -1,4 +1,5 @@
 import time
+import atexit
 import logging
 from dataclasses import dataclass
 from adafruit_servokit import ServoKit
@@ -19,14 +20,18 @@ class RobotArm:
         3: ServoConfig(500, 2700),                 # Joint 3 (180 max_angle)
         4: ServoConfig(500, 2600),                 # Joint 4 (180 max_angle)
         5: ServoConfig(500, 2600),                 # Joint 5 (180 max_angle)
+        15: ServoConfig(500, 2650, max_angle=270),
     }
 
+    # Going till 270 would cause fingers to go out of teeth. 
+    # which means, the fingers would come out. So, we are going till 250.
+
     HOME_POSITION: dict[int, int] = {
-        0: 270, 1: 90, 2: 90, 3: 90, 4: 90, 5: 105,
+        0: 250, 1: 90, 2: 90, 3: 90, 4: 90, 5: 105, 15: 250,
     }
 
     GRAB_POSITION: dict[int, int] = {
-        0: 270, 1: 90, 2: 0, 3: 50, 4: 130, 5: 105,
+        0: 250, 1: 90, 2: 0, 3: 50, 4: 130, 5: 105, 15: 250,
     }
 
     def __init__(self, i2c_bus=None):
@@ -160,3 +165,10 @@ class RobotArm:
         print("\nMoving to GRAB position smoothly...")
         self.move_all_smooth(self.GRAB_POSITION, delay, max_step)
         print("Arm is now in GRAB position.")
+        
+    def relax_all(self):
+        """Removes PWM signal from all servos so they can be moved by hand."""
+        for ch in self.SERVO_CONFIG:
+            self.kit.servo[ch].angle = None
+        print("Servos de-energized.")
+        

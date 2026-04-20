@@ -1,4 +1,5 @@
 import os
+import atexit
 
 from motor import RobotArm
 from scanner import scan_sequence
@@ -9,7 +10,8 @@ def main():
 
     print("\n[1/6] Initializing Robot Arm...")
     arm = RobotArm()
-
+    atexit.register(arm.relax_all)
+    
     print("\n[2/6] Smooth Transition to Grab Position")
     arm.go_grab_smooth()
 
@@ -23,9 +25,9 @@ def main():
     print("\n[4/6] Returning arm to HOME position...")
     arm.go_home_smooth()
 
-    print("\n[5/6] Initializing PointNet (DarkBot) with Live Data...")
+    print("\n[5/6] Initializing PointNet with Live Data...")
     # Object settings
-    height_val = 30
+    height_val = 5.5 #cm
     obj_name = "live_scanned_target"
     # Instantiate the PointNet class using the live data directly!
     darkbot = DarkBot(measurements=live_measurements, height=height_val)
