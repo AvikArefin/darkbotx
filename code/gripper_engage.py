@@ -1,4 +1,4 @@
-from motor import RobotArm
+from robot import RobotArm
 
 arm = RobotArm()
 arm.move_smooth(0, 250)

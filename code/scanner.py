@@ -1,7 +1,7 @@
 import time
 import random
 
-from motor import RobotArm
+from robot import RobotArm
 
 def adapter_angle_to_width(angle: float, max_angle: float = 250.0, min_angle: float = 0.0, max_width: float = 11.20, min_width: float = 6.2) -> float:
     """
@@ -44,7 +44,7 @@ def read_simulated_sensors(current_angle: float) -> tuple[float, float]:
     return s1, s2
 
     
-GRIPPER_F = 0  # FOR ACTUAL USE 0, FOR TESTING USE 15
+GRIPPER_F = 15  # FOR ACTUAL USE 0, FOR TESTING USE 15
 GRIPPER_R = 1
     
 def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:

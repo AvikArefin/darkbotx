@@ -1,7 +1,7 @@
 import os
 import atexit
 
-from motor import RobotArm
+from robot import RobotArm
 from scanner import scan_sequence
 from pointnet import DarkBot, export_dented_to_stl, generate_urdf
 
