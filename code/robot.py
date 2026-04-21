@@ -1,5 +1,4 @@
 import time
-import atexit
 import logging
 from dataclasses import dataclass
 from adafruit_servokit import ServoKit
@@ -25,6 +24,7 @@ class RobotArm:
 
     # Going till 270 would cause fingers to go out of teeth. 
     # which means, the fingers would come out. So, we are going till 250.
+    # 15 is simply a dummy used for testing similar behaviour as 0 i.e. gripper fingers
 
     HOME_POSITION: dict[int, int] = {
         0: 250, 1: 90, 2: 90, 3: 90, 4: 90, 5: 105, 15: 250,
