@@ -143,11 +143,12 @@ def main():
         show_FPS=False,
     )
 
-    plane = scene.add_entity(gs.morphs.Plane())
+    _ = scene.add_entity(gs.morphs.Plane())
     robot = scene.add_entity(
         gs.morphs.MJCF(
             file="xml/franka_emika_panda/panda.xml",
         ),
+        vis_mode='collision',
     )
 
     box = scene.add_entity(

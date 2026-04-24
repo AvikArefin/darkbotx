@@ -140,6 +140,10 @@ def main():
 
     scene = gs.Scene(
         show_viewer=True,
+        sim_options=gs.options.SimOptions(
+            dt=0.002,
+            gravity=(0, 0, -10.0), # Set gravity direction and strength (x, y, z)
+        ),
         viewer_options=gs.options.ViewerOptions(
             camera_pos=(1.5, 0.0, 1.5),
             camera_lookat=(0.0, 0.0, 0.5),
@@ -148,18 +152,44 @@ def main():
         show_FPS=False,
     )
 
-    plane = scene.add_entity(gs.morphs.Plane())
+    _ = scene.add_entity(gs.morphs.Plane())
     robot = scene.add_entity(
         gs.morphs.URDF(
             file="assets/Hiwonder_description/Hiwonder.urdf",
             fixed=True,
+            # Keep simplification on for the heavy lifting parts
+            decimate=True, 
+            decimate_aggressiveness=5,
+            decimate_face_num=500, 
+            convexify=False, 
         ),
+        vis_mode='collision',
     )
+
+# 1. Create a custom material with high friction and lower density
+    grippy_material = gs.materials.Rigid(
+        friction=2.5,     # High friction (like rubber)
+        rho=500.0         # Genesis uses 'rho' for density
+    )
+
+    # 2. Apply the morph and material at the entity level
     box = scene.add_entity(
-        gs.morphs.Box(size=(0.015, 0.015, 0.015), pos=(0.0, 0.0, 0.0)),
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(0.0, -0.1, .4)),
+        material=grippy_material,
+        vis_mode='collision',
     )
 
     scene.build()
+
+    # --- 2. ADD THIS TO GIVE THE HIWONDER JOINTS STRENGTH ---
+    kp = np.ones(robot.n_dofs) * 3000.0  
+    kv = np.ones(robot.n_dofs) * 300.0   
+    robot.set_dofs_kp(kp)
+    robot.set_dofs_kv(kv)
+    
+    max_force = np.ones(robot.n_dofs) * 1000.0
+    robot.set_dofs_force_range(-max_force, max_force)
+    # --------------------------------------------------------
 
     controlled_dofs = []
     for joint in robot.joints:
@@ -188,6 +218,7 @@ def main():
         "Revolute 19": np.deg2rad(90.6),
         "Slider 29": -0.0,
     }
+    
     box_pos_slider_x = Slider(
         20,
         60 + len(controlled_dofs) * 60,
@@ -236,7 +267,6 @@ def main():
     sliders.append(box_pos_slider_y)
 
     target_positions = np.zeros(robot.n_dofs)
-    box_pos = np.array([0.0, -0.1, 0.0])
 
     running = True
     while running:
@@ -269,9 +299,28 @@ def main():
                 print(f"{s.name}: {s.to_display_value(s.value):.3f}{s.unit}")
             print_requested = False
 
-        box_pos[0] = box_pos_slider_x.value
-        box_pos[1] = box_pos_slider_y.value
-        box.set_pos(box_pos)
+        # --- TWO-WAY SYNCHRONIZATION LOGIC ---
+        
+        # 1. Fetch current physical state (ensuring compatibility if Genesis returns a GPU tensor)
+        current_pos = box.get_pos()
+        if hasattr(current_pos, 'cpu'):
+            current_pos = current_pos.cpu().numpy()
+        else:
+            current_pos = np.array(current_pos)
+        
+        # 2. Check if the user is actively holding down the mouse on the sliders
+        if box_pos_slider_x.dragging or box_pos_slider_y.dragging:
+            # GUI is in control: Update the physical position
+            current_pos[0] = box_pos_slider_x.value
+            current_pos[1] = box_pos_slider_y.value
+            box.set_pos(current_pos)
+        else:
+            # Physics is in control: Update the GUI to reflect reality
+            box_pos_slider_x.value = current_pos[0]
+            box_pos_slider_y.value = current_pos[1]
+            
+        # -------------------------------------
+
         robot.control_dofs_position(target_positions)
         scene.step()
 

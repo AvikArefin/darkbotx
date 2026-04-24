@@ -318,10 +318,10 @@
     <limit upper="1.570796" lower="0.0" effort="100" velocity="100"/>
   </joint>
   <joint name="Revolute 19" type="revolute">
-    <origin xyz="0.025276 -0.02912 0.057344" rpy="0 0 0"/>
+    <origin xyz="0.025276 -0.02912 0.057344" rpy="-0.463617 0.455242 -1.570777"/>
     <parent link="fifth_link_1"/>
     <child link="sixth_link_1"/>
-    <axis xyz="-0.004192 0.443437 -0.896296"/>
+    <axis xyz="0.004192 -0.443437 0.896296"/>
     <limit upper="3.141593" lower="0.0" effort="100" velocity="100"/>
   </joint>
   <joint name="Slider 29" type="prismatic">
@@ -329,14 +329,14 @@
     <parent link="sixth_link_1"/>
     <child link="right_finger_1"/>
     <axis xyz="0.045686 0.895452 0.442806"/>
-    <limit upper="0.01" lower="-0.01" effort="100" velocity="100"/>
+    <limit upper="0.01" lower="-0.05" effort="100" velocity="100"/>
   </joint>
   <joint name="Slider 31" type="prismatic">
     <origin xyz="-0.011539 -0.042307 0.063413" rpy="0 0 0"/>
     <parent link="sixth_link_1"/>
     <child link="left_finger_1"/>
     <axis xyz="0.045686 0.895452 0.442806"/>
-    <limit upper="0.01" lower="-0.01" effort="100" velocity="100"/>
+    <limit upper="0.05" lower="-0.01" effort="100" velocity="100"/>
     <mimic joint="Slider 29" multiplier="-1.0" offset="0.0" />
   </joint>
 </robot>
