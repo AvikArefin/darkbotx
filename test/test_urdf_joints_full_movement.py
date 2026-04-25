@@ -15,13 +15,17 @@ def main():
         show_FPS=False,
     )
 
-    plane = scene.add_entity(gs.morphs.Plane())
+    _ = scene.add_entity(gs.morphs.Plane())
 
     # Import the URDF
     robot = scene.add_entity(
         gs.morphs.URDF(
             file="assets/Hiwonder_description/Hiwonder.urdf",
             fixed=True,
+            decimate=True, 
+            decimate_aggressiveness=5,
+            decimate_face_num=500, 
+            convexify=False, 
         ),
     )
 
@@ -30,7 +34,7 @@ def main():
 
     table_data = []
     
-# List to store actuated joint parameters for the animation
+    # List to store actuated joint parameters for the animation
     actuated_dofs = []
 
     for joint in robot.joints:

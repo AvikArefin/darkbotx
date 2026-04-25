@@ -1,9 +1,27 @@
 import numpy as np
 import genesis as gs
+from enum import Enum, auto
 
-GRIPPER_ROTATION_180 = 180
+class Joint(Enum):
+    """Logical names for the robot joints."""
+    BASE = auto()
+    SHOULDER = auto()
+    ELBOW = auto()
+    WRIST = auto()
+    WRIST_ROT = auto()
+    GRIPPER = auto()
+
+# Centralized mapping: logical joint -> URDF joint name
+URDF_MAPPING: dict[Joint, str] = {
+    Joint.BASE:      "Revolute 13",
+    Joint.SHOULDER:  "Revolute 14",
+    Joint.ELBOW:     "Revolute 15",
+    Joint.WRIST:     "Revolute 16",
+    Joint.WRIST_ROT: "Revolute 19",
+    Joint.GRIPPER:   "Slider 29",
+}
+
 STEPS_PER_MOVEMENT = 200
-
 
 def main():
     gs.init(backend=gs.gpu)
@@ -19,145 +37,106 @@ def main():
     )
 
     scene.add_entity(gs.morphs.Plane())
-
     robot = scene.add_entity(
         gs.morphs.URDF(
             file="assets/Hiwonder_description/Hiwonder.urdf",
             fixed=True,
-            # Keep simplification on for the heavy lifting parts
-            decimate=True, 
+            decimate=True,
             decimate_aggressiveness=5,
-            decimate_face_num=500, 
+            decimate_face_num=500,
             convexify=False, 
         ),
     )
-
-    box = scene.add_entity(
-        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(0.0, -0.1, 0.0)),
-    )
-
+    scene.add_entity(gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(0.0, -0.1, 0.0)))
     scene.build()
 
-    joint_limits = {}
-    for joint in robot.joints:
-        if joint.dofs_limit[0] is not None:
-            is_master_slider = (
-                joint.type == gs.JOINT_TYPE.PRISMATIC and joint.name == "Slider 29"
-            )
-            if joint.type == gs.JOINT_TYPE.REVOLUTE or is_master_slider:
-                joint_limits[joint.name] = {
-                    "idx": joint.dofs_idx_local[0],
-                    "min": joint.dofs_limit[0][0],
-                    "max": joint.dofs_limit[0][1],
-                    "is_revolute": joint.type == gs.JOINT_TYPE.REVOLUTE,
-                }
-
-    dof_names = list(joint_limits.keys())
-    dof_indices = [joint_limits[name]["idx"] for name in dof_names]
-    dof_mins = [joint_limits[name]["min"] for name in dof_names]
-    dof_maxs = [joint_limits[name]["max"] for name in dof_names]
-
-    home_pos = [0.0] * robot.n_dofs
-    joint1_idx = joint_limits["Revolute 13"]["idx"]
-    joint2_idx = joint_limits["Revolute 14"]["idx"]
-    joint3_idx = joint_limits["Revolute 15"]["idx"]
-    joint4_idx = joint_limits["Revolute 16"]["idx"]
-    joint5_idx = joint_limits["Revolute 19"]["idx"]
-    slider_idx = joint_limits["Slider 29"]["idx"]
+    # Joint data is resolved and cached during the initialization phase.
+    raw_joint_info = {j.name: j for j in robot.joints if j.dofs_limit[0] is not None}
+    
+    j_idx = {}
+    j_limits = {}
+    
+    for logical_joint, urdf_name in URDF_MAPPING.items():
+        joint_obj = raw_joint_info[urdf_name]
+        j_idx[logical_joint] = joint_obj.dofs_idx_local[0]
+        j_limits[logical_joint] = {
+            "min": joint_obj.dofs_limit[0][0],
+            "max": joint_obj.dofs_limit[0][1],
+        }
 
     target_positions = np.zeros(robot.n_dofs)
 
-    def move_joints(joints_dict, steps=STEPS_PER_MOVEMENT):
+    def move_joints(movement_dict, steps=STEPS_PER_MOVEMENT):
+        """Executes movement using logical Joint Enums."""
         start_pos = target_positions.copy()
         targets = np.zeros(robot.n_dofs)
-        for name, value in joints_dict.items():
-            targets[joint_limits[name]["idx"]] = np.deg2rad(value)
+        
+        for joint_enum, deg_value in movement_dict.items():
+            targets[j_idx[joint_enum]] = np.deg2rad(deg_value)
+            
         for t in np.linspace(0, 1, steps):
-            for i, name in enumerate(joints_dict.keys()):
-                idx = joint_limits[name]["idx"]
-                target_positions[idx] = (
-                    start_pos[idx] + (targets[idx] - start_pos[idx]) * t
-                )
+            for joint_enum in movement_dict.keys():
+                idx = j_idx[joint_enum]
+                target_positions[idx] = start_pos[idx] + (targets[idx] - start_pos[idx]) * t
             robot.control_dofs_position(target_positions)
             scene.step()
 
     def open_gripper():
-        target_positions[slider_idx] = joint_limits["Slider 29"]["max"]
+        target_positions[j_idx[Joint.GRIPPER]] = j_limits[Joint.GRIPPER]["max"]
         for _ in range(50):
             robot.control_dofs_position(target_positions)
             scene.step()
 
     def close_gripper():
-        target_positions[slider_idx] = joint_limits["Slider 29"]["min"]
+        target_positions[j_idx[Joint.GRIPPER]] = j_limits[Joint.GRIPPER]["min"]
         for _ in range(50):
             robot.control_dofs_position(target_positions)
             scene.step()
 
     print("[1] Moving arm above cube...")
-    move_joints(
-        {
-            "Revolute 13": 0.0,
-            "Revolute 14": 104.3,
-            "Revolute 15": 65.9,
-            "Revolute 16": 90.0,
-            "Revolute 19": 0.0,
-        }
-    )
+    move_joints({
+        Joint.BASE: 0.0,
+        Joint.SHOULDER: 104.3,
+        Joint.ELBOW: 65.9,
+        Joint.WRIST: 90.0,
+        Joint.WRIST_ROT: 0.0,
+    })
 
     print("[2] Opening gripper...")
     open_gripper()
 
     print("[3] Lowering onto cube...")
-    move_joints(
-        {
-            "Revolute 13": 0.0,
-            "Revolute 14": 119.0,
-            "Revolute 15": 54.6,
-            "Revolute 16": 89.0,
-            "Revolute 19": 0.0,
-        },
-        steps=50,
-    )
+    move_joints({
+        Joint.BASE: 0.0,
+        Joint.SHOULDER: 119.0,
+        Joint.ELBOW: 54.6,
+        Joint.WRIST: 89.0,
+        Joint.WRIST_ROT: 0.0,
+    }, steps=50)
 
-    print("Closing gripper to pick up cube...")
+    print("Closing gripper...")
     close_gripper()
 
     print("[4] Lifting cube...")
-    move_joints(
-        {
-            "Revolute 14": 68.8,
-            "Revolute 15": 57.3,
-            "Revolute 16": 34.4,
-            "Revolute 19": 0.0,
-        },
-        steps=100,
-    )
+    move_joints({
+        Joint.SHOULDER: 68.8,
+        Joint.ELBOW: 57.3,
+        Joint.WRIST: 34.4,
+    }, steps=100)
 
-    print("[5] Rotating gripper 180 degrees...")
-    for t in np.linspace(0, 180, STEPS_PER_MOVEMENT):
-        target_positions[joint5_idx] = np.deg2rad(t)
-        robot.control_dofs_position(target_positions)
-        scene.step()
+    print("[5] Rotating gripper...")
+    move_joints({Joint.WRIST_ROT: 180.0})
 
-    print("[6] Lowering cube back to ground...")
-    move_joints(
-        {
-            "Revolute 13": 0.0,
-            "Revolute 14": 119.0,
-            "Revolute 15": 54.6,
-            "Revolute 16": 89.0,
-            "Revolute 19": 180.0,
-        },
-        steps=50,
-    )
+    print("[6] Placing cube back down...")
+    move_joints({
+        Joint.BASE: 0.0,
+        Joint.SHOULDER: 119.0,
+        Joint.ELBOW: 54.6,
+        Joint.WRIST: 89.0,
+    }, steps=50)
 
-    print("[7] Opening gripper to release cube...")
+    print("[7] Releasing...")
     open_gripper()
-
-    print(
-        "Task complete! Cube has been picked up, rotated 180 degrees, and placed back on ground."
-    )
-
 
 if __name__ == "__main__":
     main()

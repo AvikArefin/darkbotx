@@ -3,7 +3,7 @@ import board
 import busio
 
 from code.sensor import Sensor
-from code.motor import RobotArm
+from code.robot import RobotArm
 
 i2c = busio.I2C(board.SCL, board.SDA)
 
@@ -37,7 +37,7 @@ while True:
 
         sensor1  = int(ema_angle)
         feedback = sensor.get_voltage(3)
-        arm.move_servo(0, sensor1)
+        arm.move_smooth(0, sensor1)
     else:
         ema_angle = None
         print("Sensor disconnected or under-voltage!")

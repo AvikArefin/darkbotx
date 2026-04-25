@@ -163,7 +163,7 @@ def main():
             decimate_face_num=500, 
             convexify=False, 
         ),
-        vis_mode='collision',
+        # vis_mode='collision',
     )
 
 # 1. Create a custom material with high friction and lower density
