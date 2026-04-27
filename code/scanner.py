@@ -44,19 +44,19 @@ def read_simulated_sensors(current_angle: float) -> tuple[float, float]:
     return s1, s2
 
     
-GRIPPER_F = 15  # FOR ACTUAL USE 0, FOR TESTING USE 15
-GRIPPER_R = 1
+GRIPPER = 15  # FOR ACTUAL USE 0, FOR TESTING USE 15
+WRIST_ROT = 1
     
 def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
     # DO NOT CHANGE HOME_POSITION TO SERVO_CONFIG
-    home_angle = arm.HOME_POSITION[GRIPPER_F]
+    home_angle = arm.HOME_POSITION[GRIPPER]
     closed_angle = 0.0
     
     # List to hold the formatted (angle, width, side) tuples
     scan_results = []
     
     print("Initializing gripper FINGERS to home position...")
-    arm.move_smooth(GRIPPER_F, home_angle)
+    arm.move_smooth(GRIPPER, home_angle)
     time.sleep(0.5)
 
     for i in range(slice):
@@ -105,8 +105,8 @@ def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
                     
             current_gripper_f_angle -= current_step
             
-            arm.kit.servo[GRIPPER_F].angle = current_gripper_f_angle # type: ignore
-            arm.current_angles[GRIPPER_F] = current_gripper_f_angle 
+            arm.kit.servo[GRIPPER].angle = current_gripper_f_angle # type: ignore
+            arm.current_angles[GRIPPER] = current_gripper_f_angle 
             time.sleep(0.02) 
 
         print(f"Final Stopped Angle of FINGERS: {current_gripper_f_angle:.1f}°")
@@ -131,7 +131,7 @@ def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
                 scan_results.append((ch1_rounded, round(width2, 2), "right"))
         
         print("Opening FINGERS to home position...")
-        arm.move_smooth(GRIPPER_F, home_angle)
+        arm.move_smooth(GRIPPER, home_angle)
         time.sleep(0.5) 
 
     print("\nScanning sequence completed.")

@@ -155,15 +155,14 @@ def main():
     _ = scene.add_entity(gs.morphs.Plane())
     robot = scene.add_entity(
         gs.morphs.URDF(
-            file="assets/Hiwonder_description/Hiwonder.urdf",
-            fixed=True,
+            file="assets/Hiwonder_urdf_simplified/Hiwonder.urdf",
             # Keep simplification on for the heavy lifting parts
             decimate=True, 
-            decimate_aggressiveness=5,
+            decimate_aggressiveness=4,
             decimate_face_num=500, 
             convexify=False, 
         ),
-        # vis_mode='collision',
+        vis_mode='collision',
     )
 
 # 1. Create a custom material with high friction and lower density
@@ -197,7 +196,7 @@ def main():
         if pos_limit[0] is not None:
             is_revolute = joint.type == gs.JOINT_TYPE.REVOLUTE
             is_master_slider = (
-                joint.type == gs.JOINT_TYPE.PRISMATIC and joint.name == "Slider 29"
+                joint.type == gs.JOINT_TYPE.PRISMATIC and joint.name == "Slider 37"
             )
             if is_revolute or is_master_slider:
                 controlled_dofs.append(
@@ -216,7 +215,7 @@ def main():
         "Revolute 15": np.deg2rad(51.4),
         "Revolute 16": np.deg2rad(90.0),
         "Revolute 19": np.deg2rad(90.6),
-        "Slider 29": -0.0,
+        "Slider 37": -0.0,
     }
     
     box_pos_slider_x = Slider(

@@ -14,12 +14,12 @@ class ServoConfig:
 class RobotArm:
     SERVO_CONFIG: dict[int, ServoConfig] = {
         0: ServoConfig(490, 2660, max_angle=270),  # Gripper
-        1: ServoConfig(450, 2650), 
-        2: ServoConfig(500, 2650),                 # Joint 2 (180 max_angle)
-        3: ServoConfig(500, 2700),                 # Joint 3 (180 max_angle)
-        4: ServoConfig(500, 2600),                 # Joint 4 (180 max_angle)
-        5: ServoConfig(500, 2600),                 # Joint 5 (180 max_angle)
-        15: ServoConfig(500, 2650, max_angle=270),
+        1: ServoConfig(450, 2650),                 # Wrist Rot (180 max_angle)
+        2: ServoConfig(500, 2650),                 # Wrist  (180 max_angle)
+        3: ServoConfig(500, 2700),                 # Elbow (180 max_angle)
+        4: ServoConfig(500, 2600),                 # Shoulder (180 max_angle)
+        5: ServoConfig(500, 2600),                 # Base (180 max_angle)
+        15: ServoConfig(500, 2650, max_angle=270), # Gripper (same as 0, used for testing)
     }
 
     # Going till 270 would cause fingers to go out of teeth. 
@@ -27,11 +27,11 @@ class RobotArm:
     # 15 is simply a dummy used for testing similar behaviour as 0 i.e. gripper fingers
 
     HOME_POSITION: dict[int, int] = {
-        0: 250, 1: 90, 2: 90, 3: 90, 4: 90, 5: 105, 15: 250,
+        0: 250, 1: 0, 2: 90, 3: 90, 4: 90, 5: 105, 15: 250,
     }
 
     GRAB_POSITION: dict[int, int] = {
-        0: 250, 1: 90, 2: 0, 3: 50, 4: 130, 5: 105, 15: 250,
+        0: 250, 1: 0, 2: 0, 3: 50, 4: 130, 5: 105, 15: 250,
     }
 
     def __init__(self, i2c_bus=None):

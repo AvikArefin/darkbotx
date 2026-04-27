@@ -1,0 +1,94 @@
+<mujoco model="Hiwonder">
+  <compiler angle="radian" meshdir="meshes/" />
+  <asset>
+    <mesh name="base_link" file="base_link.stl" scale="0.001 0.001 0.001" />
+    <mesh name="second_link_1" file="second_link_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="sixth_link_1" file="sixth_link_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fourth_link_1" file="fourth_link_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="fifth_link_1" file="fifth_link_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="third_link_1" file="third_link_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="left_finger_1" file="left_finger_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="right_finger_1" file="right_finger_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="left_silicone_1" file="left_silicone_1.stl" scale="0.001 0.001 0.001" />
+    <mesh name="right_ilicone_1" file="right_ilicone_1.stl" scale="0.001 0.001 0.001" />
+    <material name="base_link_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="second_link_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="sixth_link_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="fourth_link_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="fifth_link_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="third_link_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="left_finger_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="right_finger_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="left_silicone_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+    <material name="right_ilicone_1_mat" rgba="0.698 0.698 0.698 1" specular="0" />
+  </asset>
+
+  <worldbody>
+    <body name="base_link" pos="0 0 0">
+      <inertial pos="0.0000011 0.0926086 0.030564" mass="1.5251097" fullinertia="0.008261 0.002907 0.009107 0 0 0.001105"/>
+      <geom pos="0 0 0" group="1" contype="0" conaffinity="0" material="base_link_mat" type="mesh" mesh="base_link" />
+      <geom pos="0 0 0" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="base_link" />
+      <body name="second_link_1" pos="0 0.056304 0.060801" quat="0.7071068 0 0 -0.7071068">
+        <joint name="Revolute 13" type="hinge" axis="0 0 1" limited="true" range="0 3.1416" actuatorfrclimited="true" actuatorfrcrange="-100 100" damping="0" frictionloss="0"/>
+        <inertial pos="0.0015156 0.0000018 0.0248094" mass="0.3790901" fullinertia="0.000161 0.00016 0.000201 0 -0.000006 0"/>
+        <geom pos="0 -0.056304 -0.060801" group="1" contype="0" conaffinity="0" material="second_link_1_mat" type="mesh" mesh="second_link_1" />
+        <geom pos="0 -0.056304 -0.060801" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="second_link_1" />
+        <body name="third_link_1" pos="0.02722 -0.01 0.035">
+          <joint name="Revolute 36" type="hinge" axis="1 0 0" limited="true" range="0 3.141593" actuatorfrclimited="true" actuatorfrcrange="-100 100" damping="0" frictionloss="0"/>
+          <inertial pos="-0.0276988 0.0519751 0.0000265" mass="0.1622625" diaginertia="0.000203 0.000102 0.00029"/>
+          <geom pos="-0.02722 -0.046304 -0.095801" group="1" contype="0" conaffinity="0" material="third_link_1_mat" type="mesh" mesh="third_link_1" />
+          <geom pos="-0.02722 -0.046304 -0.095801" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="third_link_1" />
+          <body name="fourth_link_1" pos="-0.056 0.104 0.000053" quat="0.7071068 0.7071068 0 0">
+            <joint name="Revolute 34" type="hinge" axis="-1 0 0" limited="true" range="0 1.57079" actuatorfrclimited="true" actuatorfrcrange="-100 100" damping="0" frictionloss="0"/>
+            <inertial pos="0.0294151 0.0235062 0.0000293" mass="0.2923903" fullinertia="0.000208 0.000081 0.000266 -0.000002 0 0"/>
+            <geom pos="0.02878 -0.150304 -0.095854" group="1" contype="0" conaffinity="0" material="fourth_link_1_mat" type="mesh" mesh="fourth_link_1" />
+            <geom pos="0.02878 -0.150304 -0.095854" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="fourth_link_1" />
+            <body name="fifth_link_1" pos="-0.0014 0.08859 0.00003" quat="0.7071068 0.7071068 0 0">
+              <joint name="Revolute 35" type="hinge" axis="-1 0 0" limited="true" range="0 1.570796" actuatorfrclimited="true" actuatorfrcrange="-100 100" damping="0" frictionloss="0"/>
+              <inertial pos="0.0248211 0.0199186 0.0099945" mass="0.2938034" fullinertia="0.000201 0.000102 0.000168 0.000006 0.000001 0.000001"/>
+              <geom pos="0.03018 -0.238894 -0.095884" group="1" contype="0" conaffinity="0" material="fifth_link_1_mat" type="mesh" mesh="fifth_link_1" />
+              <geom pos="0.03018 -0.238894 -0.095884" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="fifth_link_1" />
+              <body name="sixth_link_1" pos="0.025276 0.064287 0.001888" quat="0.7071068 0 0.7071068 0">
+                <joint name="Revolute 19" type="hinge" axis="0 1 0" limited="true" range="0 3.141593" actuatorfrclimited="true" actuatorfrcrange="-100 100" damping="0" frictionloss="0"/>
+                <inertial pos="0.0001561 0.0462409 0.0051058" mass="0.5747761" fullinertia="0.000539 0.000275 0.000338 -0.000001 -0.000001 -0.000055"/>
+                <geom pos="0.004904 -0.303181 -0.097772" group="1" contype="0" conaffinity="0" material="sixth_link_1_mat" type="mesh" mesh="sixth_link_1" />
+                <geom pos="0.004904 -0.303181 -0.097772" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="sixth_link_1" />
+                <body name="left_finger_1" pos="-0.097833 0.3934 -0.004965">
+                  <joint name="Slider 37" type="slide" axis="-0.00438 0.018937 -0.999811" limited="true" range="-0.01 0.02" actuatorfrclimited="true" actuatorfrcrange="-100 100" damping="0" frictionloss="0"/>
+                  <inertial pos="0.1007759 -0.2951399 -0.0241004" mass="0.0169058" fullinertia="0.000007 0.000005 0.000006 0.000001 0 0.000002"/>
+                  <geom pos="0.102737 -0.696581 -0.092807" group="1" contype="0" conaffinity="0" material="left_finger_1_mat" type="mesh" mesh="left_finger_1" />
+                  <geom pos="0.102737 -0.696581 -0.092807" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="left_finger_1" />
+                  <body name="left_silicone_1" pos="0.09692 -0.283195 -0.028453">
+                    <inertial pos="0.0000469 -0.0002034 0.0107649" mass="0.0162585" diaginertia="0.000002 0.000006 0.000005"/>
+                    <geom pos="0.005817 -0.413386 -0.064354" group="1" contype="0" conaffinity="0" material="left_silicone_1_mat" type="mesh" mesh="left_silicone_1" />
+                    <geom pos="0.005817 -0.413386 -0.064354" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="left_silicone_1" />
+                  </body>
+                </body>
+                <body name="right_finger_1" pos="-0.097934 0.393923 -0.027659">
+                  <joint name="Slider 38" type="slide" axis="-0.00438 0.018937 -0.999811" limited="true" range="-0.02 0.01" actuatorfrclimited="true" actuatorfrcrange="-100 100" damping="0" frictionloss="0"/>
+                  <inertial pos="0.0958096 -0.2972024 0.0810796" mass="0.0169058" fullinertia="0.000007 0.000005 0.000006 -0.000001 0 -0.000002"/>
+                  <geom pos="0.102838 -0.697104 -0.070113" group="1" contype="0" conaffinity="0" material="right_finger_1_mat" type="mesh" mesh="right_finger_1" />
+                  <geom pos="0.102838 -0.697104 -0.070113" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="right_finger_1" />
+                  <body name="right_ilicone_1" pos="0.099765 -0.285463 0.08588">
+                    <inertial pos="-0.0000471 0.0002038 -0.0107645" mass="0.0162585" diaginertia="0.000002 0.000006 0.000005"/>
+                    <geom pos="0.003073 -0.411641 -0.155993" group="1" contype="0" conaffinity="0" material="right_ilicone_1_mat" type="mesh" mesh="right_ilicone_1" />
+                    <geom pos="0.003073 -0.411641 -0.155993" rgba="0.9373 0.2667 0.2667 1" group="3" contype="1" conaffinity="1" type="mesh" mesh="right_ilicone_1" />
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="Revolute 13_servo" joint="Revolute 13" kp="50" />
+    <position name="Revolute 19_servo" joint="Revolute 19" kp="50" />
+    <position name="Revolute 34_servo" joint="Revolute 34" kp="50" />
+    <position name="Revolute 35_servo" joint="Revolute 35" kp="50" />
+    <position name="Revolute 36_servo" joint="Revolute 36" kp="50" />
+    <position name="Slider 37_servo" joint="Slider 37" kp="50" />
+    <position name="Slider 38_servo" joint="Slider 38" kp="50" />
+  </actuator>
+</mujoco>

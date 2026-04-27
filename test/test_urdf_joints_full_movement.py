@@ -49,7 +49,7 @@ def main():
             
             is_revolute = (joint.type == gs.JOINT_TYPE.REVOLUTE)
             # CRITICAL: Only grab the Master slider, ignore Slider 31 (the slave)
-            is_master_slider = (joint.type == gs.JOINT_TYPE.PRISMATIC and joint.name == "Slider 29")
+            is_master_slider = (joint.type == gs.JOINT_TYPE.PRISMATIC and joint.name == "Slider 37")
 
             if joint.type == gs.JOINT_TYPE.PRISMATIC:
                 limit_val = [f"{limit:.3f}" for limit in pos_limit[0]]
