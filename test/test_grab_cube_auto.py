@@ -14,11 +14,11 @@ class Joint(Enum):
 # Centralized mapping: logical joint -> URDF joint name
 URDF_MAPPING: dict[Joint, str] = {
     Joint.GRIPPER:   "Slider 37",
-    Joint.WRIST_ROT: "Revolute 19",
-    Joint.WRIST:     "Revolute 16",
-    Joint.ELBOW:     "Revolute 15",
-    Joint.SHOULDER:  "Revolute 14",
-    Joint.BASE:      "Revolute 13",
+    Joint.WRIST_ROT: "Revolute 19", #
+    Joint.WRIST:     "Revolute 35",
+    Joint.ELBOW:     "Revolute 34", #
+    Joint.SHOULDER:  "Revolute 36",
+    Joint.BASE:      "Revolute 13", #
 }
 
 STEPS_PER_MOVEMENT = 200
@@ -39,15 +39,13 @@ def main():
     scene.add_entity(gs.morphs.Plane())
     robot = scene.add_entity(
         gs.morphs.URDF(
-            file="assets/Hiwonder_description/Hiwonder.urdf",
+            file="assets/Hiwonder_urdf_simplified/Hiwonder.urdf",
             fixed=True,
-            decimate=True,
-            decimate_aggressiveness=5,
-            decimate_face_num=500,
+            decimate=False,
             convexify=False, 
         ),
     )
-    scene.add_entity(gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(-0.011, -0.116, 0.0)))
+    scene.add_entity(gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=(0.007, -0.120, 0.0)))
     scene.build()
 
     # Joint data is resolved and cached during the initialization phase.
@@ -93,25 +91,26 @@ def main():
             robot.control_dofs_position(target_positions)
             scene.step()
 
-    print("[1] Moving arm above cube...")
+    print("[1] Opening gripper...")
+    open_gripper()
+
+    print("[2] Moving arm above cube...")
     move_joints({
         Joint.WRIST_ROT: 0.0,
-        Joint.WRIST: 90.0,
-        Joint.ELBOW: 65.9,
-        Joint.SHOULDER: 104.3,
-        Joint.BASE: 105.0,
+        Joint.WRIST: 0,
+        Joint.ELBOW: 37.3,
+        Joint.SHOULDER: 115.5,
+        Joint.BASE: 90,
     })
 
-    print("[2] Opening gripper...")
-    open_gripper()
 
     print("[3] Lowering onto cube...")
     move_joints({
         Joint.WRIST_ROT: 0.0,
-        Joint.WRIST: 89.0,
-        Joint.ELBOW: 54.6,
-        Joint.SHOULDER: 119.0,
-        Joint.BASE: 105.0,
+        Joint.WRIST: 0,
+        Joint.ELBOW: 37.3,
+        Joint.SHOULDER: 123,
+        Joint.BASE: 90,
     }, steps=50)
 
     print("[4] Closing gripper...")
@@ -119,9 +118,9 @@ def main():
 
     print("[5] Lifting cube...")
     move_joints({
-        Joint.WRIST: 34.4,
-        Joint.ELBOW: 57.3,
-        Joint.SHOULDER: 68.8,
+        Joint.WRIST: 18.0,
+        Joint.ELBOW: 57,
+        Joint.SHOULDER: 41,
     }, steps=100)
 
     print("[6] Rotating gripper...")
@@ -129,11 +128,17 @@ def main():
 
     print("[7] Placing cube back down...")
     move_joints({
-        Joint.WRIST: 89.0,
-        Joint.ELBOW: 54.6,
-        Joint.SHOULDER: 119.0,
-        Joint.BASE: 105.0,
+        Joint.WRIST: 0,
+        Joint.ELBOW: 37.3,
+        Joint.SHOULDER: 115.5,
+        Joint.BASE: 90,
     }, steps=100)
+    move_joints({
+        Joint.WRIST: 0,
+        Joint.ELBOW: 37.3,
+        Joint.SHOULDER: 123,
+        Joint.BASE: 90,
+    }, steps=50)
 
     print("[8] Releasing...")
     open_gripper()
