@@ -171,7 +171,7 @@ def main():
             decimate=False,
             convexify=False,
         ),
-        vis_mode="collision",
+        # vis_mode="collision",
     )
 
     box = scene.add_entity(

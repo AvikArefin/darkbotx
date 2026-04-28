@@ -60,19 +60,20 @@ class SimulatedRobotArm:
     }
     
     HOME_POSITION: dict[int, int] = {
-        0: 250, 1: 90, 2: 90, 3: 90, 4: 90, 5: 105, 15: 250,
+        0: 250, 1: 0, 2: 90, 3: 90, 4: 90, 5: 105, 15: 250,
     }
 
     GRAB_POSITION: dict[int, int] = {
-        0: 250, 1: 90, 2: 0, 3: 50, 4: 130, 5: 105, 15: 250,
+        0: 250, 1: 0, 2: 0, 3: 37, 4: 130, 5: 105, 15: 250,
     }
     
+    # Updated to match the new URDF mapping
     CHANNEL_TO_JOINT = {
         0: "Slider 37",   # Gripper
         1: "Revolute 19", # Wrist Rot
-        2: "Revolute 16", # Wrist
-        3: "Revolute 15", # Elbow
-        4: "Revolute 14", # Shoulder
+        2: "Revolute 35", # Wrist
+        3: "Revolute 34", # Elbow
+        4: "Revolute 36", # Shoulder
         5: "Revolute 13", # Base
         15: "Slider 37",  # Gripper
     }
@@ -93,14 +94,12 @@ class SimulatedRobotArm:
         self.scene.add_entity(gs.morphs.Plane())
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
-                file="assets/Hiwonder_description/Hiwonder.urdf",
+                file="assets/Hiwonder_urdf_simplified/Hiwonder.urdf",
                 fixed=True,
-                decimate=True,
-                decimate_aggressiveness=5,
-                decimate_face_num=500,
+                decimate=False,
                 convexify=False, 
             ),
-            vis_mode='collision',
+            # vis_mode='collision',
         )
         # Add a cube to scan
         self.cube = self.scene.add_entity(
@@ -132,20 +131,19 @@ class SimulatedRobotArm:
             return
         idx = self.j_idx[channel]
         
-        # Calibrated mappings
         if channel in [0, 15]: # Gripper
-            # Slider 37 is [-0.05, 0.01] m
-            val = (angle / 250.0) * 0.06 - 0.05
+            # Slider 37 limits are [-0.01, 0.02] m (Total range: 0.03)
+            val = (angle / 250.0) * 0.03 - 0.01
         elif channel == 1: # Wrist Rot
             val = np.deg2rad(angle)
         elif channel == 2: # Wrist
-            val = np.deg2rad(89.0 + (130.0 - angle))
+            val = np.deg2rad(angle)
         elif channel == 3: # Elbow
-            val = np.deg2rad(54.6 + (50.0 - angle))
+            val = np.deg2rad(angle)
         elif channel == 4: # Shoulder
             val = np.deg2rad(angle)
         elif channel == 5: # Base
-            val = np.deg2rad(angle)
+            val = np.deg2rad(angle - 15) # Base has a 15 degree offset in Real Bot
         else:
             val = np.deg2rad(angle)
             
