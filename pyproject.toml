@@ -5,7 +5,6 @@ description = "A visionless grasping robot"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "genesis-world>=0.4.6",
     "mapbox-earcut>=2.0.0",
     "numpy-stl>=3.2.0",
     "urdf-parser-py>=0.0.4",
@@ -20,6 +19,7 @@ dependencies = [
     "grpcio!=1.78.1",
     "rpi-lgpio>=0.6; sys_platform == 'linux' and platform_machine == 'aarch64'",
     "pygame>=2.6.1",
+    "genesis-world>=1.2.1",
 ]
 
 [tool.pyrefly]
