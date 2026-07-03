@@ -28,9 +28,7 @@ def main():
         user_input = input("Enter pulse width in µs (e.g., 500, 1500, 2500): ")
         
         if user_input.lower() == 'q':
-            # Setting duty_cycle to 0 stops sending the signal, relaxing the motor
-            pca.channels[target_channel].duty_cycle = 0
-            print("Motor relaxed. Exiting.")
+            print("Exiting.")
             break
             
         try:

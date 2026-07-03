@@ -11,7 +11,6 @@ def main():
 
     print("\n[1/9] Initializing Robot Arm...")
     arm = RobotArm()
-    atexit.register(arm.relax_all)
     
     print("\n[2/9] Smooth Transition to Grab Position")
     arm.go_grab_smooth()
@@ -88,6 +87,7 @@ def main():
     arm.move_smooth(0, 250)
     time.sleep(0.5)
 
+    arm.go_home_smooth()
     print("\n=== PIPELINE COMPLETE ===")
     
 if __name__ == "__main__":

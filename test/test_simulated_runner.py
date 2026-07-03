@@ -1,7 +1,6 @@
 import os
 import sys
 import time
-import atexit
 
 import types
 from unittest.mock import MagicMock
@@ -187,9 +186,6 @@ class SRobotArm:
     def go_grab_smooth(self, delay=0.01, max_step=1.0):
         print("Moving to GRAB position...")
         self.move_all_smooth(self.GRAB_POSITION)
-        
-    def relax_all(self):
-        print("Relaxation (de-energized).")
 
 # 3. Inject SRobotArm into sys.modules BEFORE importing scanner/pointnet
 # This satisfies the requirement that scanner imports from 'robot'
@@ -206,7 +202,6 @@ def main():
 
     print("\n[1/9] Initializing Robot...")
     arm = SRobotArm()
-    atexit.register(arm.relax_all)
     
     print("\n[2/9] Smooth Transition to Grab Position")
     arm.go_grab_smooth()

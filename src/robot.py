@@ -175,10 +175,3 @@ class RobotArm:
         print("\nMoving to GRAB position smoothly...")
         self.move_all_smooth(self.GRAB_POSITION, delay, max_step)
         print("Arm is now in GRAB position.")
-        
-    def relax_all(self):
-        """Removes PWM signal from all servos so they can be moved by hand."""
-        for ch in self.SERVO_CONFIG:
-            self.kit.servo[ch].angle = None
-        print("Servos de-energized.")
-        
