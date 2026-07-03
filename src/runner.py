@@ -15,6 +15,9 @@ def main():
     
     print("\n[2/9] Smooth Transition to Grab Position")
     arm.go_grab_smooth()
+    
+    print("PUT the box")
+    time.sleep(5)
 
     print("\n[3/9] Executing Hardware Scan")
     # Run the sequence (e.g., n=12 for a scan every 15 degrees)
@@ -25,8 +28,9 @@ def main():
 
     print("\n[4/9] Grabbing the object based on scan data...")
     if live_measurements:
+        dist = [m[1] for m in live_measurements]
         # Calculate a characteristic size (e.g., average radius) from the scan data
-        avg_measurement = sum(live_measurements) / len(live_measurements)
+        avg_measurement = sum(dist) / len(dist)
         
         # Map the measurement to a suitable grip angle.
         # Assuming channel 0 config: 250 is the maximum safe open boundary.

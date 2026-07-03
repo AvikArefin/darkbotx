@@ -12,3 +12,5 @@ ur5_reinforcement_learning_grasp_object/
 logs/
 .ruff_cache/
 .kilo/
+.lgd-nfy0
+**/.lgd-nfy0

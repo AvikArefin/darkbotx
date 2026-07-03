@@ -29,9 +29,13 @@ class RobotArm:
     HOME_POSITION: dict[int, int] = {
         0: 250, 1: 0, 2: 90, 3: 90, 4: 90, 5: 105, 15: 250,
     }
+    
+    LIFT_POSITION: dict[int, int] = {
+        0: 10, 1: 0, 2: 90, 3: 90, 4: 90, 5: 105, 15: 10,
+    }
 
     GRAB_POSITION: dict[int, int] = {
-        0: 250, 1: 0, 2: 0, 3: 50, 4: 130, 5: 105, 15: 250,
+        0: 250, 1: 0, 2: 0, 3: 50, 4: 120, 5: 105, 15: 250,
     }
 
     def __init__(self, i2c_bus=None):
@@ -127,7 +131,7 @@ class RobotArm:
             return
 
         # 2. Find the maximum distance any single servo has to travel
-        max_dist = max((abs(d) for d in distances.values()), default=0)
+        max_dist: float | int = max((abs(d) for d in distances.values()), default=0)
         
         if max_dist < 0.1:
             return # All servos are already at their target positions
@@ -159,6 +163,12 @@ class RobotArm:
         print("\nReturning to HOME position smoothly...")
         self.move_all_smooth(self.HOME_POSITION, delay, max_step)
         print("Arm is now at HOME.")
+
+    def go_lift_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
+        """Smoothly and simultaneously moves all servos to LIFT."""
+        print("\nReturning to LIFT position smoothly...")
+        self.move_all_smooth(self.LIFT_POSITION, delay, max_step)
+        print("Arm is now at LIFT.")
 
     def go_grab_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
         """Smoothly and simultaneously moves all servos to GRAB position."""
