@@ -21,8 +21,7 @@ sys.modules.update({
 # 2. Path Setup
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'code'))
 
-# --- Simulated Class Definition ---
-
+# --- Class Definition ---
 class MockServo:
     def __init__(self, channel, arm):
         self.channel = channel
@@ -47,8 +46,8 @@ class MockKit:
     def __init__(self, arm):
         self.servo = {ch: MockServo(ch, arm) for ch in [0, 1, 2, 3, 4, 5, 15]}
 
-class SimulatedRobotArm:
-    """A simulated replacement for RobotArm that uses Genesis."""
+class SRobotArm:
+    """A eplacement for RobotArm that uses Genesis."""
     SERVO_CONFIG: dict[int, str] = {
         0:  "Gripper",
         1:  "Wrist Rot",
@@ -83,7 +82,7 @@ class SimulatedRobotArm:
         print("Initializing Genesis Simulation...")
         gs.init(backend=gs.gpu)
         self.scene = gs.Scene(
-            show_viewer=True,
+            show_viewer=False,
             viewer_options=gs.options.ViewerOptions(
                 camera_pos=(0.6, -0.6, 0.6),
                 camera_lookat=(0.0, 0.0, 0.2),
@@ -190,12 +189,12 @@ class SimulatedRobotArm:
         self.move_all_smooth(self.GRAB_POSITION)
         
     def relax_all(self):
-        print("Simulated relaxation (de-energized).")
+        print("Relaxation (de-energized).")
 
-# 3. Inject SimulatedRobotArm into sys.modules BEFORE importing scanner/pointnet
+# 3. Inject SRobotArm into sys.modules BEFORE importing scanner/pointnet
 # This satisfies the requirement that scanner imports from 'robot'
 robot_mock = types.ModuleType("robot")
-robot_mock.RobotArm = SimulatedRobotArm  # type: ignore
+robot_mock.RobotArm = SRobotArm  # type: ignore
 sys.modules["robot"] = robot_mock
 
 # 4. Project Imports - Now safe to import because 'robot' is mocked
@@ -203,17 +202,17 @@ from scanner import scan_sequence
 from pointnet import DarkBot, export_dented_to_stl, generate_urdf
 
 def main():
-    print("=== STARTING DARKBOT SIMULATED PIPELINE ===")
+    print("=== STARTING DARKBOT PIPELINE ===")
 
-    print("\n[1/9] Initializing Simulated Robot...")
-    arm = SimulatedRobotArm()
+    print("\n[1/9] Initializing Robot...")
+    arm = SRobotArm()
     atexit.register(arm.relax_all)
     
     print("\n[2/9] Smooth Transition to Grab Position")
     arm.go_grab_smooth()
 
-    print("\n[3/9] Executing Simulated Scan")
-    live_measurements = scan_sequence(arm, slice=6) # type: ignore
+    print("\n[3/9] Executing Scan")
+    live_measurements = scan_sequence(arm, slice=4) # type: ignore
     print(f"\nScan complete. Gathered {len(live_measurements)} data points:")
     for m in live_measurements:
         print(f"  -> {m}")
@@ -240,7 +239,7 @@ def main():
 
     print("\n[6/9] Initializing PointNet with Live Data...")
     height_val = 5.5 #cm
-    obj_name = "simulated_target"
+    obj_name = "starget"
     darkbot = DarkBot(measurements=live_measurements, height=height_val)
 
     print("\n[7/9] Generating 3D Meshes and URDF...")
@@ -265,7 +264,7 @@ def main():
     arm.move_smooth(0, 250)
     time.sleep(1.0)
 
-    print("\n=== SIMULATED PIPELINE COMPLETE ===")
+    print("\n=== PIPELINE COMPLETE ===")
     time.sleep(5)
 
 if __name__ == "__main__":

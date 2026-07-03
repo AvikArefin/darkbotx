@@ -15,7 +15,7 @@ from matplotlib.figure import Figure
 matplotlib.use('QtAgg')
 
 # custom imports
-from code.logger_setup import setup_logger
+from logger_setup import setup_logger
 
 # CONSTANTS
 WIDTH = 600 

@@ -9,3 +9,9 @@
 [x] - Tuning servo pwm preliminary
 [ ] - Tuning servo pwm for left and right rotation seperately as well as custom function for custom 3 point range interpolation
 [ ] - Adjust the servo mechanical offsets
+
+
+1. 4.6cm root corner width value
+2. 3.5cm width value
+3. 2cm min width of gripper
+4. 6.5 max width of girpper

@@ -497,7 +497,7 @@ requires-dist = [
     { name = "pygame", specifier = ">=2.6.1" },
     { name = "pyqt6", specifier = ">=6.10.2" },
     { name = "rpi-lgpio", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", specifier = ">=0.6" },
-    { name = "rsl-rl-lib", specifier = ">=4.0.1" },
+    { name = "rsl-rl-lib", specifier = ">=5.0.1" },
     { name = "tabulate", specifier = ">=0.10.0" },
     { name = "tensorboard", specifier = ">=2.20.0" },
     { name = "torch", specifier = ">=2.10.0" },
@@ -2459,7 +2459,7 @@ wheels = [
 
 [[package]]
 name = "rsl-rl-lib"
-version = "4.0.1"
+version = "5.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "gitpython" },
@@ -2470,9 +2470,9 @@ dependencies = [
     { name = "torch" },
     { name = "torchvision" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/aa/5b/5bea7c110c389f9336ebe5ad7cd9abbcbbb64d7de0d0f50c2af8fa2ce321/rsl_rl_lib-4.0.1.tar.gz", hash = "sha256:76a194e4834946716cc0e44dcd2be8b2254ac969c2452b145cd268c9cc908bf7", size = 41069, upload-time = "2026-02-09T09:15:10.927Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/a8/fb9aae0573a83dd510e228085f5e6ff9076a91f2bff6699270f07d31854c/rsl_rl_lib-5.2.0.tar.gz", hash = "sha256:cbb4eee96af9574495208381115d45d68ad1c0403710a2bc6512a2ee5bf57124", size = 60558, upload-time = "2026-04-23T12:40:54.259Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/db/8fa8832e6e02e5c4dc8321eb1596d5968b86a214fca03af361c94b8b045f/rsl_rl_lib-4.0.1-py3-none-any.whl", hash = "sha256:e840c8587acaad4ba3ab34fc7b07a203b34dd44a831ea9dc5de1769bfc14b148", size = 53803, upload-time = "2026-02-09T09:15:09.705Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/3a/3e8f39049cc5a8994bfdb2dd09d727f90a2781b9755adf59e49fa509500e/rsl_rl_lib-5.2.0-py3-none-any.whl", hash = "sha256:fc767059f329a184527dd10766c3382354f6deca4b049f23febc8140c3dc6029", size = 86451, upload-time = "2026-04-23T12:40:52.762Z" },
 ]
 
 [[package]]

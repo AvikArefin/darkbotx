@@ -10,7 +10,7 @@ dependencies = [
     "numpy-stl>=3.2.0",
     "urdf-parser-py>=0.0.4",
     "pyqt6>=6.10.2",
-    "rsl-rl-lib>=4.0.1",
+    "rsl-rl-lib>=5.0.1",
     "torch>=2.10.0",
     "tensorboard>=2.20.0",
     "wandb>=0.25.0",
@@ -22,10 +22,7 @@ dependencies = [
     "pygame>=2.6.1",
 ]
 
-# For ty (Type checking & LSP)
-[tool.ty.environment]
-extra-paths = ["code"]
-
-# For Ruff (Linting)
-[tool.ruff]
-src = ["code"]
+[tool.pyrefly]
+preset = "strict"
+strict-callable-subtyping = true
+spec-compliant-overloads = true

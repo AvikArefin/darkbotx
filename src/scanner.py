@@ -43,6 +43,44 @@ def read_simulated_sensors(current_angle: float) -> tuple[float, float]:
     
     return s1, s2
 
+import math
+import random
+
+def read_sensors(current_finger_angle: float, current_rotor_angle: float, a: float = 7.0) -> tuple[float, float]:
+    """
+    Simulates two flex sensors scanning a square of side length 'a' (cm).
+    Voltage stays at baseline 2.6V, then spikes above 3.4V threshold 
+    when the finger angle matches the physical width of the square at the current rotation.
+    """
+    # Calculate the bounding width of a square rotated by current_rotor_angle
+    # W(theta) = a * (|cos(theta)| + |sin(theta)|)
+    rad_angle = math.radians(current_rotor_angle)
+    target_width = a * (abs(math.cos(rad_angle)) + abs(math.sin(rad_angle)))
+    
+    # Calculate what finger angle corresponds to this target physical width
+    # Inverting the logic from adapter_angle_to_width()
+    max_angle, min_angle = 250.0, 0.0
+    max_width, min_width = 11.20, 6.2
+    
+    # Check if width is within measurable limits, cap if necessary
+    clamped_width = max(min_width, min(max_width, target_width))
+    target_finger_angle = min_angle + (clamped_width - min_width) * ((max_angle - min_angle) / (max_width - min_width))
+
+    # Sensor logic: trigger (jump > 3.4V) when current angle squeezes down to the target angle
+    if current_finger_angle > target_finger_angle:
+        s1_base = 2.6
+        s2_base = 2.6
+    else:
+        # Voltage rapidly increases to simulate direct rigid contact
+        s1_base = 3.5 + (target_finger_angle - current_finger_angle) * 0.1
+        s2_base = 3.5 + (target_finger_angle - current_finger_angle) * 0.1
+        
+    # Noise is kept positive so it never subtracts from the baseline
+    s1 = s1_base + random.uniform(0.01, 0.05)
+    s2 = s2_base + random.uniform(0.01, 0.05)
+    
+    return s1, s2
+
     
 GRIPPER = 15  # FOR ACTUAL USE 0, FOR TESTING USE 15
 WRIST_ROT = 1
@@ -78,7 +116,7 @@ def scan_sequence(arm : RobotArm, slice: int) -> list[tuple[float, float, str]]:
         s2_trigger_angle = None
         
         while current_gripper_f_angle > closed_angle:
-            v1, v2 = read_simulated_sensors(current_gripper_f_angle)
+            v1, v2 = read_sensors(current_gripper_f_angle, gripper_r_target_angle)
             
             # Bounds check: Must stay between 2.5 and 3.4
             s1_out_of_bounds = not (2.5 <= v1 <= 3.4)

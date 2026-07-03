@@ -5,7 +5,7 @@ from rsl_rl.env import VecEnv
 from tensordict import TensorDict
 
 # custom import
-from code.logger_setup import setup_logger
+from logger_setup import setup_logger
 
 # logger setup
 logger = setup_logger(__name__)
