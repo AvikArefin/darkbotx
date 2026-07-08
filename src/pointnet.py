@@ -18,7 +18,6 @@ from urdf_parser_py.urdf import (
     Pose,
 )
 
-
 @dataclass
 class UnitData:
     angle: np.float16
@@ -178,7 +177,6 @@ class DarkBot:
         plt.legend(loc="upper right")
         plt.show()
 
-
 def export_dented_to_stl(bot: DarkBot, filename: str):
     points_2d = bot.getDentedBoundary()
     height = bot.height
@@ -254,13 +252,15 @@ def generate_urdf(stl_filepath, name, scale, urdf_filepath):
         origin=Pose(xyz=[0, 0, 0], rpy=[0, 0, 0]),
     )
 
+    rel_stl_path = os.path.relpath(stl_filepath, os.path.dirname(urdf_filepath))
+
     link.visual = Visual(
-        geometry=Mesh(filename=stl_filepath, scale=[scale, scale, scale]),
+        geometry=Mesh(filename=rel_stl_path, scale=[scale, scale, scale]),
         origin=Pose(xyz=[0, 0, 0], rpy=[0, 0, 0]),
     )
 
     link.collision = Collision(
-        geometry=Mesh(filename=stl_filepath, scale=[scale, scale, scale]),
+        geometry=Mesh(filename=rel_stl_path, scale=[scale, scale, scale]),
         origin=Pose(xyz=[0, 0, 0], rpy=[0, 0, 0]),
     )
 
@@ -299,7 +299,7 @@ if __name__ == "__main__":
 
     # 5.5cm Cube at 15-degree resolution
     obj_name = "cube"
-    measurements = [
+    measurements: list[tuple[float, float, str]] = [
         (0, 5.50, "both"),
         (15, 5.70, "both"),
         (30, 6.35, "both"),
@@ -323,5 +323,6 @@ if __name__ == "__main__":
     urdf_path = os.path.join(folder_path, f"{obj_name}.urdf")
 
     export_dented_to_stl(darkbot, stl_path)
-    generate_urdf(stl_path, obj_name, 0.1, urdf_path)
+    # generate_urdf(stl_path, obj_name, 0.01, urdf_path)
+    generate_urdf(stl_path, obj_name, 0.007, urdf_path)
     darkbot.visualize()

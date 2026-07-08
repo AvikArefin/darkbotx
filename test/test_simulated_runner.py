@@ -92,7 +92,7 @@ class SRobotArm:
         self.scene.add_entity(gs.morphs.Plane())
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
-                file="assets/Hiwonder_urdf_simplified/Hiwonder.urdf",
+                file="assets/Hiwonder/Hiwonder.urdf",
                 fixed=True,
                 decimate=False,
                 convexify=False, 
