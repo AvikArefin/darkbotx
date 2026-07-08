@@ -9,13 +9,13 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/star.stl" scale="0.1 0.1 0.1"/>
+        <mesh filename="meshes/star.stl" scale="0.035 0.035 0.035"/>
       </geometry>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/star.stl" scale="0.1 0.1 0.1"/>
+        <mesh filename="meshes/star.stl" scale="0.035 0.035 0.035"/>
       </geometry>
     </collision>
   </link>
