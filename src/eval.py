@@ -1,12 +1,16 @@
 import os
-from config import EVAL_ENV_CFG
+
+from pathlib import Path
+
 import torch
+
 import genesis as gs
 from genesis import _gs_backend
-from environment import GraspEnv
+
 from rsl_rl.runners import OnPolicyRunner
-from config import RL_POLICY_CFG
-from pathlib import Path
+
+from config import RL_POLICY_CFG, EVAL_ENV_CFG
+from environment import GraspEnv
 
 def evaluate(model_path: str, num_steps: int):
     gs.init(backend=_gs_backend.cpu, precision="32", logging_level="warning")
@@ -52,7 +56,7 @@ def evaluate(model_path: str, num_steps: int):
     print(f"Success Rate: {success_rate * 100:.2f}%")
 
 if __name__ == "__main__":
-    log_dir = Path("logs") / "darkbot"
+    log_dir = Path("logs") / "darkbotx"
     model_files = list(log_dir.glob("model_*.pt"))
     if not model_files:
         raise FileNotFoundError(f"No model checkpoints found in {log_dir}. Please train a model first.")

@@ -1,11 +1,10 @@
-from config import TRAIN_ENV_CFG
 import genesis as gs
 from genesis import _gs_backend
 
 from rsl_rl.runners import OnPolicyRunner
 
 from environment import GraspEnv
-from config import RL_POLICY_CFG
+from config import RL_POLICY_CFG, TRAIN_ENV_CFG
 
 
 def main():
