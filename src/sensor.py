@@ -39,9 +39,9 @@ class Sensor:
             # Create a list of all ports. Ex: 4 (P0, P1, P2, P3)
             self.ports = [AnalogIn(self.ads, i) for i in range(self.channels)]
 
+            self._initialized = True
             self.init_volts = self.get_all_voltages()
 
-            self._initialized = True
 
         except Exception as e:
             self._initialized = False
