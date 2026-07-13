@@ -12,7 +12,7 @@ from torch import Tensor
 
 import genesis as gs
 from genesis import Scene
-from genesis.utils.geom import trans_quat_to_T, transform_quat_by_quat, quat_to_R
+from genesis.utils.geom import trans_quat_to_T, transform_quat_by_quat, quat_to_R, quat_to_xyz
 
 from rsl_rl.env import VecEnv
 
@@ -20,7 +20,8 @@ from tensordict import TensorDict
 
 from typing import Any, cast, override
 
-from config import DJoint
+from config import SJoint
+
 
 def get_urdf_meshes(urdf_path: str):
     tree = ET.parse(urdf_path)
@@ -40,6 +41,37 @@ def get_urdf_meshes(urdf_path: str):
             
     return list({(p, tuple(s)) for p, s in mesh_paths})
 
+def resample_boundary(points: np.ndarray, num_points: int) -> np.ndarray:
+    """Resamples a 2D polygon boundary to have exactly `num_points` points.
+    
+    The points are assumed to form a closed loop.
+    """
+    if len(points) == 0:
+        return np.zeros((num_points, points.shape[1]))
+        
+    # Ensure it's closed to calculate full perimeter
+    closed_pts = np.vstack([points, points[0]])
+    # Compute segment lengths
+    dists = np.sqrt(np.sum(np.diff(closed_pts, axis=0)**2, axis=1))
+    cum_dists = np.concatenate(([0.0], np.cumsum(dists)))
+    total_dist = cum_dists[-1]
+    
+    if total_dist < 1e-6:
+        # Fallback if points are coincident
+        indices = np.linspace(0, len(points) - 1, num_points)
+        return points[np.round(indices).astype(int)]
+        
+    # Query points at equal intervals
+    query_dists = np.linspace(0, total_dist, num_points, endpoint=False)
+    
+    # Interpolate x and y coordinates
+    resampled = np.zeros((num_points, points.shape[1]))
+    for d in range(points.shape[1]):
+        resampled[:, d] = np.interp(query_dists, cum_dists, closed_pts[:, d])
+        
+    return resampled
+
+
 class GraspEnv(VecEnv):
     def __init__(self, CONFIG: dict[str, Any]) -> None :
         # self.num_envs: int = CONFIG.get("num_envs", 1)
@@ -50,7 +82,6 @@ class GraspEnv(VecEnv):
         self.episode_length_buf: torch.Tensor = torch.zeros(self.num_envs, dtype=torch.long, device=gs.device)
         # pyrefly: ignore [bad-assignment]
         self.device = gs.device
-        
         self.scene = gs.Scene(
             viewer_options=gs.options.ViewerOptions(
                 res = self.cfg.get("image_resolution", (1280, 960)),
@@ -69,19 +100,79 @@ class GraspEnv(VecEnv):
         self.scene.add_entity(gs.morphs.Plane())
         self.robot = Manipulator(self.scene, self.cfg)
         
-        obj_type = self.cfg["object_type"]
-        obj_kwargs = cast(dict[str, Any], self.cfg.get("object_configs", {}).get(obj_type, {}))
+        config_obj_type = self.cfg.get("object_type", "random")
+        self.object_configs = self.cfg.get("object_configs", {})
+        self.object_names = list(self.object_configs.keys())
+        
+        # Precompute local 2D periphery points resampled to exactly 16 points for each config
+        num_points = self.cfg.get("num_periphery_points", 16)
+        local_peripheries = {}
+        
+        for name, obj_kwargs in self.object_configs.items():
+            is_urdf = "file" in obj_kwargs
+            if is_urdf:
+                urdf_path = cast(str, obj_kwargs.get("file"))
+                if not os.path.isabs(urdf_path):
+                    urdf_path = os.path.join(os.path.dirname(__file__), "..", urdf_path)
+                meshes_info = get_urdf_meshes(urdf_path)
+                if meshes_info:
+                    mesh_file, scale = meshes_info[0]
+                    t_mesh = cast(trimesh.Trimesh, trimesh.load(mesh_file))
+                    t_mesh.apply_scale(scale)
+                    path2d = t_mesh.projected(normal=[0, 0, 1])
+                    boundary_points = path2d.discrete[0][:-1]
+                    resampled = resample_boundary(boundary_points, num_points)
+                    pts_3d = np.zeros((num_points, 3))
+                    pts_3d[:, :2] = resampled
+                    local_peripheries[name] = torch.tensor(pts_3d, dtype=torch.float32, device=gs.device)
+                else:
+                    local_peripheries[name] = torch.zeros((num_points, 3), device=gs.device)
+            else:
+                size: list[float] = cast(list[float], obj_kwargs.get("size", [0.03, 0.03, 0.03]))
+                lx, ly = size[0], size[1]
+                boundary_points = np.array([
+                    [lx/2, ly/2],
+                    [-lx/2, ly/2],
+                    [-lx/2, -ly/2],
+                    [lx/2, -ly/2]
+                ])
+                resampled = resample_boundary(boundary_points, num_points)
+                pts_3d = np.zeros((num_points, 3))
+                pts_3d[:, :2] = resampled
+                local_peripheries[name] = torch.tensor(pts_3d, dtype=torch.float32, device=gs.device)
+                
+        # Now create list of morphs, one for each env
         spawn_pos = self.cfg.get("object_spawn_pos", (-0.0061, -0.0617, 0.015))
-        # moved it to a different location for testing purpose only to test the final left finger position without box
-        # spawn_pos = (-0.0061, -0.0617, 0.015)
-        self.spawn_pos = torch.tensor(spawn_pos, device=gs.device)
-        if obj_type == "urdf":
-            morph = gs.morphs.URDF(pos=spawn_pos, **obj_kwargs)
-        else:
-            morph = gs.morphs.Box(pos=spawn_pos, **obj_kwargs)
-
-        self.object = self.scene.add_entity(
-            morph,
+        self.spawn_pos = torch.tensor(spawn_pos, device=gs.device).expand(self.num_envs, -1)
+        
+        spawn_yaw = self.cfg.get("object_spawn_yaw", 0.0)
+        self.spawn_yaw = torch.tensor(spawn_yaw, device=gs.device).expand(self.num_envs)
+        
+        morphs = []
+        self.env_object_names = []
+        local_peripheries_list = []
+        
+        for i in range(self.num_envs):
+            if config_obj_type == "random":
+                name = self.object_names[i % len(self.object_names)]
+            else:
+                name = config_obj_type
+                
+            self.env_object_names.append(name)
+            obj_kwargs = self.object_configs[name]
+            is_urdf = "file" in obj_kwargs
+            if is_urdf:
+                morph = gs.morphs.URDF(pos=spawn_pos, **obj_kwargs)
+            else:
+                morph = gs.morphs.Box(pos=spawn_pos, **obj_kwargs)
+            morphs.append(morph)
+            local_peripheries_list.append(local_peripheries[name])
+            
+        # Stack local periphery points so it's a [num_envs, num_points, 3] tensor
+        self._local_periphery = torch.stack(local_peripheries_list).to(gs.device)
+        
+        self.objects = self.scene.add_entity(
+            morphs,
             material=gs.materials.Rigid(friction=2.0),
             surface=gs.surfaces.Rough(
                 diffuse_texture=gs.textures.ColorTexture(
@@ -94,71 +185,42 @@ class GraspEnv(VecEnv):
         self._debug_draw: bool = self.cfg.get("debug_draw", False)
         self._debug_dashboard: bool = self.cfg.get("debug_dashboard", False)
         self.debugline: bool = self.cfg.get("debugline", False)
+        self._use_mtrick: bool = self.cfg.get("use_mtrick", False)
+
+        if self._use_mtrick:
+            from mtrick import Tracker
+            self._tracker = Tracker("live_periphery")
 
         self.scene.build(n_envs=self.num_envs, env_spacing=(1, 1))
-        
-        print(f"The mass of the object is: {self.object.get_mass()} kg")
         
         # Make the gripper joints much stiffer so they can apply enough force to hold the object
         _kp = self.robot._robot_entity.get_dofs_kp()
         _kp[:] = 500.0  # stiffer arm
-        _kp[DJoint.GRIPPER_LEFT] = 5000.0
-        _kp[DJoint.GRIPPER_RIGHT] = 5000.0
+        _kp[SJoint.GRIPPER_LEFT] = 5000.0
+        _kp[SJoint.GRIPPER_RIGHT] = 5000.0
         self.robot._robot_entity.set_dofs_kp(_kp)
         
         _kv = self.robot._robot_entity.get_dofs_kv()
         _kv[:] = 20.0
-        _kv[DJoint.GRIPPER_LEFT] = 100.0
-        _kv[DJoint.GRIPPER_RIGHT] = 100.0
+        _kv[SJoint.GRIPPER_LEFT] = 100.0
+        _kv[SJoint.GRIPPER_RIGHT] = 100.0
         self.robot._robot_entity.set_dofs_kv(_kv)
-        
-        # Cache local periphery points
-        if obj_type == "urdf":
-            urdf_path = cast(str, obj_kwargs.get("file"))
-            if not os.path.isabs(urdf_path):
-                urdf_path = os.path.join(os.path.dirname(__file__), "..", urdf_path)
-                
-            meshes_info = get_urdf_meshes(urdf_path)
-            if meshes_info:
-                mesh_file, scale = meshes_info[0]
-                t_mesh = cast(trimesh.Trimesh, trimesh.load(mesh_file))
-                t_mesh.apply_scale(scale)
-                path2d = t_mesh.projected(normal=[0, 0, 1])
-                boundary_points = path2d.discrete[0][:-1]  # Exclude the last point since it matches the first
-                
-                pts_3d = np.zeros((len(boundary_points), 3))
-                pts_3d[:, :2] = boundary_points
-                self._local_periphery = torch.tensor(pts_3d, dtype=torch.float32, device=gs.device)
-            else:
-                self._local_periphery = torch.zeros((4, 3), device=gs.device)
-        else:
-            # Fallback for box shape
-            size: list[float] = cast(list[float], obj_kwargs.get("size", [0.03, 0.03, 0.03]))
-            lx, ly = size[0], size[1]
-            self._local_periphery = torch.tensor([
-                [lx/2, ly/2, 0],
-                [-lx/2, ly/2, 0],
-                [-lx/2, -ly/2, 0],
-                [lx/2, -ly/2, 0]
-            ], dtype=torch.float32, device=gs.device)
+
     
     @override
     def step(self, actions: Tensor) -> tuple[TensorDict, Any, Tensor, dict[str, Any]]:
         """
         actions: [num_envs, 2] tensor containing [angle, squeeze_width]
         """
-        self._last_action = actions
-        
         # 1. Rotation [RL]
         self.robot.apply_rotation_action(actions[:, 0])
         for _ in range(120):
             self.scene.step()
 
-        # 2. Move to grasp position
+        # 2. Move to grasp position [Manual]
         self.robot.move_to_grasp_position()
         for _ in range(120):
             self.scene.step()
-
 
         # actions[:, 1] = torch.full_like(actions[:, 1], -1.0)
 
@@ -168,7 +230,7 @@ class GraspEnv(VecEnv):
             self.scene.step()
 
 
-        # 4. Lift up [Manual] — multi-stage to prevent flinging the object
+        # 4. Lift up — multi-stage to prevent flinging the object [Manual]
         grasp_shoulder = 1.7453
         final_shoulder = 0.34
         lift_steps = 4
@@ -179,11 +241,26 @@ class GraspEnv(VecEnv):
             for _ in range(50):
                 self.scene.step()
 
-        # 3. Evaluate Reward
-        pos = self.object.get_pos()
+        # 5. Evaluate Reward
+        pos = self.objects.get_pos()
+        quat = self.objects.get_quat()
+        rpy = quat_to_xyz(quat, rpy=True)
+        yaw = rpy[:, 2:3]
+
+        yaw_diff = torch.atan2(
+            torch.sin(yaw - self.spawn_yaw.unsqueeze(-1)),
+            torch.cos(yaw - self.spawn_yaw.unsqueeze(-1))
+        ).abs().squeeze(-1)
+        
+        # Linear scaling between 5 degrees (100% reward) and 45 degrees (0% reward)
+        yaw_limit_min = 5.0 * math.pi / 180.0
+        yaw_limit_max = 45.0 * math.pi / 180.0
+        yaw_scale = torch.clamp((yaw_limit_max - yaw_diff) / (yaw_limit_max - yaw_limit_min), min=0.0, max=1.0)
+
         # Example condition: Z is above 0.1 
         # [on the ground it says ~0.015, and ~0.2 is kind of at the max]
         reward = (pos[:, 2] > 0.1).float() 
+        reward = reward * yaw_scale
         self._last_reward = reward
         
         # update time
@@ -192,7 +269,7 @@ class GraspEnv(VecEnv):
         if self.debugline:
             # Print the last value of the left gripper finger
             qpos = self.robot._robot_entity.get_qpos()
-            left_gripper_val = qpos[:, DJoint.GRIPPER_LEFT]
+            left_gripper_val = qpos[:, SJoint.GRIPPER_LEFT]
             print(f"Last left gripper finger value: {left_gripper_val.tolist()}")
         
         # 4. End Episode
@@ -234,19 +311,17 @@ class GraspEnv(VecEnv):
 
 
         # >>>>>>>>>>>>>>>>> RESET OBJECT >>>>>>>>>>>>>>>>>
-        pos = self.spawn_pos.clone().detach().to(gs.device).expand(self.num_envs, -1)
-
-        # Get random value of -45 to +45 (in radians) | pi = 180
-        random_yaw = (
+        # Get random value of -90 to +90 (in radians) | pi = 180
+        self.spawn_yaw = (
             torch.rand(self.num_envs) * 2 * math.pi - math.pi
-        ) * 0.25
+        ) * 0.5
 
         q_yaw = torch.stack(
             [
-                torch.cos(random_yaw / 2),
+                torch.cos(self.spawn_yaw / 2),
                 torch.zeros(self.num_envs),
                 torch.zeros(self.num_envs),
-                torch.sin(random_yaw / 2),
+                torch.sin(self.spawn_yaw / 2),
             ],
             dim=-1,
         )
@@ -255,22 +330,22 @@ class GraspEnv(VecEnv):
         goal_yaw = transform_quat_by_quat(q_yaw, q_downward)
         
         if envs_idx is None:
-            self.object.set_pos(pos, skip_forward=True)
-            self.object.set_quat(goal_yaw, skip_forward=False)
+            self.objects.set_pos(self.spawn_pos, skip_forward=True)
+            self.objects.set_quat(goal_yaw, skip_forward=False)
         else:
-            self.object.set_pos(pos, envs_idx=envs_idx, skip_forward=True)
-            self.object.set_quat(goal_yaw, envs_idx=envs_idx, skip_forward=False)
+            self.objects.set_pos(self.spawn_pos, envs_idx=envs_idx, skip_forward=True)
+            self.objects.set_quat(goal_yaw, envs_idx=envs_idx, skip_forward=False)
         
         # <<<<<<<<<<<<<<<<<<<<< RESET OBJECT <<<<<<<<<<<<<<<<<<<<
         
 
-
-
     @override
     def get_observations(self)-> TensorDict:
-        pos = self.object.get_pos() # [num_envs, 3]
-        quat = self.object.get_quat() # [num_envs, 4]
-        
+        """
+        Being called after resetting and at the end of a step, means that it will only output the inital position, quaternions, etc, keep this in mind.
+        """
+        pos = self.objects.get_pos() # [num_envs, 3]
+        quat = self.objects.get_quat() # [num_envs, 4]
         # 1. Height
         height = pos[:, 2:3]
         
@@ -278,53 +353,65 @@ class GraspEnv(VecEnv):
         R = quat_to_R(quat) # [num_envs, 3, 3]
         
         # Rotate corners
-        rotated_periphery = torch.einsum('nij,kj->nki', R, self._local_periphery)
+        rotated_periphery = torch.einsum('nij,nkj->nki', R, self._local_periphery)
         
         # Extract x,y and flatten
-        num_points = self._local_periphery.shape[0]
+        num_points = self._local_periphery.shape[1]
         periphery_2d = rotated_periphery[:, :, :2].reshape(self.num_envs, num_points * 2)
         
         # 3. Gripper State (Wrist rotation and gripper left)
         qpos = self.robot._robot_entity.get_qpos()
-        angle = qpos[:, DJoint.WRIST_ROLL:DJoint.WRIST_ROLL+1] 
-        width = qpos[:, DJoint.GRIPPER_LEFT:DJoint.GRIPPER_LEFT+1] 
+        angle = qpos[:, SJoint.WRIST_ROLL:SJoint.WRIST_ROLL+1] 
+        width = qpos[:, SJoint.GRIPPER_LEFT:SJoint.GRIPPER_LEFT+1] 
         gripper_state = torch.cat([angle, width], dim=-1)
 
+        # 4. Object Yaw
+        rpy = quat_to_xyz(quat, rpy=True)
+        yaw = rpy[:, 2:3]
+        
         # Draw the periphery for env_idx 0 in the 3D viewer
         if self._debug_draw:
-            world_periphery_0 = rotated_periphery[0] + pos[0]
-            self.draw_debug_periphery(world_periphery_0)
+            # world_periphery_0 = rotated_periphery[0] + pos[0]
+            # self.draw_debug_periphery(world_periphery_0)
+            self.draw_debug_periphery(rotated_periphery[0])
 
         # --- DASHBOARD ---
         if self._debug_dashboard:
             sys.stdout.write("\033[H\033[J") # Move to home, clear screen
-            print("=== DARKBOTX ENVIRONMENT DASHBOARD ===")
-            if hasattr(self, '_last_action') and self._last_action is not None:
-                print(f"Action:          {self._last_action[0].tolist()}")
-            if hasattr(self, '_last_reward') and self._last_reward is not None:
-                print(f"Reward:          {self._last_reward[0].item():.4f}")
+            print("====== DARKBOTX ENVIRONMENT DASHBOARD ======")
+            print(f"Reward:          {self._last_reward[0].item():.4f}")
             print(f"pos[0]:          {pos[0].tolist()}")
             print(f"quat[0]:         {quat[0].tolist()}")
+            print(f"yaw[0]:          {yaw[0].item():.4f}")
             print(f"height[0]:       {height[0].item():.4f}")
-            print(f"periphery_2d:    {periphery_2d[0].tolist()}")
             print(f"gripper_state:   {gripper_state[0].tolist()}")
-            print("======================================")
+            print("============================================")
             sys.stdout.flush()
         
+        # --- MTRICK LIVE DASHBOARD UPDATES ---
+        if self._use_mtrick:
+            
+            # Extract x,y for env_idx = 0
+            local_2d = rotated_periphery[0, :, :2].tolist()
+            
+            # Close the polygons in the 2D plot
+            if len(local_2d) > 0:
+                local_2d.append(local_2d[0])
+                
+            self._tracker.log_trajectory(local_2d, [])
+
         return TensorDict({
             "object_2d_profile": periphery_2d,
+            "object_yaw": yaw,
             "object_height": height,
             "current_gripper_state": gripper_state
         }, batch_size=[self.num_envs])
 
 
-    def draw_debug_periphery(self, world_periphery: torch.Tensor, radius: float = 0.005, color: tuple[float, float, float, float]=(0.0, 1.0, 0.0, 1.0)):
+    def draw_debug_periphery(self, world_periphery: torch.Tensor, radius: float = 0.0035, color: tuple[float, float, float, float]=(0.0, 1.0, 0.0, 1.0)):
         """Draws the 2D periphery points in the Genesis viewer for debugging."""
-        if hasattr(self.scene, 'clear_debug_objects'):
-            self.scene.clear_debug_objects()
-            
-        if hasattr(self.scene, 'draw_debug_spheres'):
-            self.scene.draw_debug_spheres(poss=world_periphery.cpu().numpy(), radius=radius, color=color)
+        self.scene.clear_debug_objects()
+        self.scene.draw_debug_spheres(poss=world_periphery.cpu().numpy(), radius=radius, color=color)
 
     def draw_debug_frame(self, pos: torch.Tensor, quat: torch.Tensor, axis_len: float = 0.05, radius: float = 0.002, env_idx: int = 0):
         """Draws a coordinate frame using Genesis's built-in draw_debug_frame."""
@@ -369,7 +456,7 @@ class Manipulator:
         # Exclude GRIPPER_RIGHT (mimic joint) — its motion is driven by the mimic
         # constraint on GRIPPER_LEFT. Setting a controller target on it would fight
         # the constraint and prevent GRIPPER_LEFT from reaching its target.
-        controlled_dofs = [j.value for j in DJoint if j != DJoint.GRIPPER_RIGHT]
+        controlled_dofs = [j.value for j in SJoint if j != SJoint.GRIPPER_RIGHT]
         self._robot_entity.control_dofs_position(
             position=self._init_qpos[controlled_dofs].expand(self._robot_entity.get_qpos().shape[0], -1),
             dofs_idx_local=controlled_dofs,
@@ -394,8 +481,8 @@ class Manipulator:
         """
         Apply the rotation action from the RL agent.
         """
-        targets: dict[DJoint, int | float | Tensor]  = {
-            DJoint.WRIST_ROLL: self.rotation_scale(rotation, DJoint.WRIST_ROLL),
+        targets: dict[SJoint, int | float | Tensor]  = {
+            SJoint.WRIST_ROLL: self.rotation_scale(rotation, SJoint.WRIST_ROLL),
         }
         self.control_motors(targets)
 
@@ -403,33 +490,33 @@ class Manipulator:
         """
         Apply the squeeze action from the RL agent.
         """
-        targets: dict[DJoint, int | float | Tensor]  = {
-            DJoint.GRIPPER_LEFT: self.prismatic_scale(squeeze, DJoint.GRIPPER_LEFT),
+        targets: dict[SJoint, int | float | Tensor]  = {
+            SJoint.GRIPPER_LEFT: self.prismatic_scale(squeeze, SJoint.GRIPPER_LEFT),
         }
         self.control_motors(targets)
 
     def move_to_grasp_position(self):
-        targets: dict[DJoint, int | float | Tensor] = {
+        targets: dict[SJoint, int | float | Tensor] = {
             # HiwonderJoint.BASE: 0.0,
-            DJoint.SHOULDER: 1.7453, # 100 degrees
-            DJoint.ELBOW: 0.1745, # 10 degrees
+            SJoint.SHOULDER: 1.7453, # 100 degrees
+            SJoint.ELBOW: 0.1745, # 10 degrees
             # HiwonderJoint.WRIST: 0.1745,
             # HiwonderJoint.WRIST_ROLL: 0.1745,
-            DJoint.GRIPPER_LEFT: 0.02, # fully open (meters)
+            SJoint.GRIPPER_LEFT: 0.02, # fully open (meters)
         }
         self.control_motors(targets)
 
     def move_to_lift_position(self, shoulder_target: float = 0.34, gripper_action: Tensor | None = None):
-        targets: dict[DJoint, int | float | Tensor] = {
-            DJoint.SHOULDER: shoulder_target,
+        targets: dict[SJoint, int | float | Tensor] = {
+            SJoint.SHOULDER: shoulder_target,
         }
         if gripper_action is not None:
-            targets[DJoint.GRIPPER_LEFT] = self.prismatic_scale(gripper_action, DJoint.GRIPPER_LEFT)
+            targets[SJoint.GRIPPER_LEFT] = self.prismatic_scale(gripper_action, SJoint.GRIPPER_LEFT)
             
         self.control_motors(targets)
 
 
-    def control_motors(self, targets: dict[DJoint, int | float | Tensor]) -> None:
+    def control_motors(self, targets: dict[SJoint, int | float | Tensor]) -> None:
         """
         Controls multiple motors at once without changing the target state of other motors.
         

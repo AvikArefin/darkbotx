@@ -1,14 +1,15 @@
 import time
-import board
-import busio
 
-from code.sensor import Sensor
-from code.robot import RobotArm
+from robot import RobotArm
 
-i2c = busio.I2C(board.SCL, board.SDA)
+arm = RobotArm()
 
-sensor = Sensor(i2c, v_min=1.5, v_max=2.5)
-arm    = RobotArm(i2c)
+def get_mapped_value(voltage: float, v_min: float, v_max: float, out_min: float, out_max: float) -> float:
+    if voltage <= v_min:
+        return out_min
+    if voltage >= v_max:
+        return out_max
+    return out_min + (voltage - v_min) * (out_max - out_min) / (v_max - v_min)
 
 EMA_ALPHA = 0.1
 # EMA_ALPHA = 0.1 at your 50ms loop = roughly a 500ms smoothing window. Tune it:
@@ -17,17 +18,17 @@ EMA_ALPHA = 0.1
 # 0.15 → moderate, ~300ms lag
 # 0.3 → light smoothing, reacts quickly
 
-ema_angle = None  # Smooth the mapped angle, not the voltage
-
+ema_angle: float | None = None
 sensor1 = 0
+feedback = 0.0
 
 print("System Initialized. Starting loop...")
 
 while True:
-    raw_volt = sensor.get_voltage(0)
+    raw_volt = arm.sensor.get_voltage(0)
 
     if raw_volt > 0.1:
-        raw_angle = sensor.get_mapped_value(0, 0, 270)
+        raw_angle = get_mapped_value(raw_volt, 1.5, 2.5, 0.0, 270.0)
 
         # Apply EMA to the angle output
         if ema_angle is None:
@@ -36,7 +37,7 @@ while True:
             ema_angle = EMA_ALPHA * raw_angle + (1 - EMA_ALPHA) * ema_angle
 
         sensor1  = int(ema_angle)
-        feedback = sensor.get_voltage(3)
+        feedback = arm.sensor.get_voltage(3)
         arm.move_smooth(0, sensor1)
     else:
         ema_angle = None
@@ -45,5 +46,3 @@ while True:
     print(f"Voltage: {raw_volt:.2f}V | Target: {sensor1}° | Feedback: {feedback}", end="\r")
 
     time.sleep(0.05)
-
-

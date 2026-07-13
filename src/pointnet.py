@@ -1,4 +1,5 @@
 import os
+import typing
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import ConvexHull
@@ -25,7 +26,7 @@ class UnitData:
     side: str  # "both", "left", or "right"
 
 
-class DarkBot:
+class PointNet:
     def __init__(
         self, measurements: list[tuple[float, float, str]], height: float
     ) -> None:
@@ -177,50 +178,60 @@ class DarkBot:
         plt.legend(loc="upper right")
         plt.show()
 
-def export_dented_to_stl(bot: DarkBot, filename: str):
-    points_2d = bot.getDentedBoundary()
-    height = bot.height
-    pts_64 = points_2d.astype(np.float64)
-    n = len(pts_64)
+    def export_dented_to_stl(self, filename: str) -> None:
+        points_2d = self.getDentedBoundary()
+        height = self.height
+        pts_64 = points_2d.astype(np.float64)
+        n = len(pts_64)
 
-    # Triangulate caps
-    rings = np.array([n], dtype=np.uint32)
-    indices = earcut.triangulate_float64(pts_64, rings)
+        # Triangulate caps
+        rings = np.array([n], dtype=np.uint32)
+        indices = earcut.triangulate_float64(pts_64, rings)
 
-    num_cap_triangles = len(indices) // 3
-    num_side_triangles = n * 2
-    total_triangles = (num_cap_triangles * 2) + num_side_triangles
+        num_cap_triangles = len(indices) // 3
+        num_side_triangles = n * 2
+        total_triangles = (num_cap_triangles * 2) + num_side_triangles
 
-    data = np.zeros(total_triangles, dtype=mesh.Mesh.dtype)
-    shape_mesh = mesh.Mesh(data)
+        data = np.zeros(total_triangles, dtype=mesh.Mesh.dtype)
+        shape_mesh: typing.Any = mesh.Mesh(data)
 
-    bottom_pts = np.column_stack([pts_64, np.zeros(n)])
-    top_pts = np.column_stack([pts_64, np.full(n, height)])
+        bottom_pts = np.column_stack([pts_64, np.zeros(n)])
+        top_pts = np.column_stack([pts_64, np.full(n, height)])
 
-    idx = 0
-    # Create Side Walls
-    for i in range(n):
-        next_i = (i + 1) % n
-        shape_mesh.vectors[idx] = [bottom_pts[i], top_pts[next_i], top_pts[i]]
-        shape_mesh.vectors[idx + 1] = [
-            bottom_pts[i],
-            bottom_pts[next_i],
-            top_pts[next_i],
-        ]
-        idx += 2
+        idx = 0
+        # Create Side Walls
+        for i in range(n):
+            next_i = (i + 1) % n
+            shape_mesh.vectors[idx] = [bottom_pts[i], top_pts[next_i], top_pts[i]]
+            shape_mesh.vectors[idx + 1] = [
+                bottom_pts[i],
+                bottom_pts[next_i],
+                top_pts[next_i],
+            ]
+            idx += 2
 
-    # Create Caps
-    for i in range(0, len(indices), 3):
-        i1, i2, i3 = indices[i], indices[i + 1], indices[i + 2]
-        shape_mesh.vectors[idx] = [top_pts[i1], top_pts[i2], top_pts[i3]]
-        shape_mesh.vectors[idx + 1] = [bottom_pts[i1], bottom_pts[i3], bottom_pts[i2]]
-        idx += 2
+        # Create Caps
+        for i in range(0, len(indices), 3):
+            i1, i2, i3 = indices[i], indices[i + 1], indices[i + 2]
+            shape_mesh.vectors[idx] = [top_pts[i1], top_pts[i2], top_pts[i3]]
+            shape_mesh.vectors[idx + 1] = [bottom_pts[i1], bottom_pts[i3], bottom_pts[i2]]
+            idx += 2
 
-    shape_mesh.save(filename)
-    print(f"Exported to {filename}")
+        shape_mesh.save(filename)
+        print(f"Exported to {filename}")
+
+    def export(self, name: str, scale: float = 0.006) -> tuple[str, str]:
+        folder_path = f"assets/{name}"
+        os.makedirs(os.path.join(folder_path, "meshes"), exist_ok=True)
+        stl_path = os.path.join(folder_path, "meshes", f"{name}.stl")
+        urdf_path = os.path.join(folder_path, f"{name}.urdf")
+
+        self.export_dented_to_stl(stl_path)
+        generate_urdf(stl_path, name, scale, urdf_path)
+        return stl_path, urdf_path
 
 
-def generate_urdf(stl_filepath, name, scale, urdf_filepath):
+def generate_urdf(stl_filepath: str, name: str, scale: float, urdf_filepath: str) -> None:
     # calculate inertia
     mesh = trimesh.load(stl_filepath)
 
@@ -313,16 +324,22 @@ if __name__ == "__main__":
         (150, 6.35, "both"),
         (165, 5.70, "both"),
     ]
-    height_val = 5.5
 
-    darkbot = DarkBot(measurements, height=height_val)
-
-    folder_path = f"assets/{obj_name}"
-    os.makedirs(os.path.join(folder_path, "meshes"), exist_ok=True)
-    stl_path = os.path.join(folder_path, "meshes", f"{obj_name}.stl")
-    urdf_path = os.path.join(folder_path, f"{obj_name}.urdf")
-
-    export_dented_to_stl(darkbot, stl_path)
-    # generate_urdf(stl_path, obj_name, 0.01, urdf_path)
-    generate_urdf(stl_path, obj_name, 0.007, urdf_path)
+    obj_name = "rect"
+    measurements: list[tuple[float, float, str]] = [
+        (0, 11.00, "both"),
+        (15, 11.39, "both"),
+        (30, 11.00, "both"),
+        (45, 7.78, "both"),
+        (60, 6.35, "both"),
+        (75, 5.69, "both"),
+        (90, 5.50, "both"),
+        (105, 5.69, "both"),
+        (120, 6.35, "both"),
+        (135, 7.78, "both"),
+        (150, 11.00, "both"),
+        (165, 11.39, "both"),
+    ]
+    darkbot = PointNet(measurements, height=5.5)
+    darkbot.export(obj_name, scale=0.006)
     darkbot.visualize()

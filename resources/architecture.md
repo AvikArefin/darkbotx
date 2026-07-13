@@ -4,10 +4,10 @@ This document describes the environment architecture for a Single-Step Episode (
 
 ## The Objective
 The goal is to train an RL agent to perform a single, critical decision step that outputs two continuous values:
-1. **Grasp Angle:** The rotation of the gripper (`DJoint.WRIST_ROLL`).
-2. **Squeeze Width:** How much the fingers should squeeze/close (`DJoint.GRIPPER_LEFT`).
+1. **Grasp Angle:** The rotation of the gripper (`SJoint.WRIST_ROLL`).
+2. **Squeeze Width:** How much the fingers should squeeze/close (`SJoint.GRIPPER_LEFT`).
 
-These joint indices are mapped via the `DJoint` IntEnum to improve code readability and maintainability.
+These joint indices are mapped via the `SJoint` IntEnum to improve code readability and maintainability.
 
 The rest of the physical movement (approaching, closing the gripper to the specified width, lifting) is handled manually (deterministically).
 

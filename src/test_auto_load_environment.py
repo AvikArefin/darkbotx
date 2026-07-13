@@ -1,4 +1,3 @@
-import argparse
 import time
 import os
 import importlib
@@ -11,10 +10,10 @@ import config
 
 def main():
     # Initialize Genesis
-    gs.init(backend=gs.cpu, precision="32", logging_level="warning")
+    gs.init(backend=gs._gs_backend.cpu, precision="32", logging_level="warning")
 
     # Create the environment with the viewer enabled
-    env = environment.GraspEnv()
+    env = environment.GraspEnv(config.TEST_ENV_CFG)
     
     # Initialize the environment for the first time
     obs = env.reset()
@@ -71,10 +70,7 @@ def main():
                 # Pass a dummy continuous action [angle, squeeze_width]
                 action = torch.zeros((env.num_envs, 2), device=gs.device)
                 obs, reward, done, info = env.step(action)
-                
-                # Single-step episode immediately returns done=True
-                if done.any():
-                    obs = env.reset()
+                # The env auto resets itself.
             except Exception as e:
                 if "Viewer closed" in str(e):
                     print("\n[Viewer Closed] Exiting script cleanly.")

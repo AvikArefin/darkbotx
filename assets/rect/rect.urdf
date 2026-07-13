@@ -1,0 +1,22 @@
+<?xml version="1.0" ?>
+<robot name="rect" version="1.0">
+  <link name="base">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.08706647300227612"/>
+      <inertia ixx="1.5504659272251733e-05" ixy="-3.29778374751691e-40" ixz="-1.2657162573381497e-21" iyy="3.774999569324666e-05" iyz="-2.0663696023139664e-23" izz="3.7452090115585275e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="meshes/rect.stl" scale="0.006 0.006 0.006"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="meshes/rect.stl" scale="0.006 0.006 0.006"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

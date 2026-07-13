@@ -70,3 +70,7 @@ This project utilizes [Genesis](https://github.com/Genesis-Embodied-AI/genesis-w
   url = {https://github.com/Genesis-Embodied-AI/genesis-world}
 }
 ```
+
+## TODO
+2. Add an angle‑centric auxiliary reward
+3. Penalise unnecessary rotation after lift

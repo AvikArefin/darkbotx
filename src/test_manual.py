@@ -13,11 +13,11 @@ from typing import TypedDict
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from environment import GraspEnv
-from config import DJoint, TEST_ENV_CFG
+from config import SJoint, TEST_ENV_CFG
 
 class DofDict(TypedDict):
     raw_name: str
-    logical_joint: DJoint
+    logical_joint: SJoint
     idx: int
     min: float
     max: float
@@ -57,7 +57,7 @@ class Slider:
         min_val: float,
         max_val: float,
         raw_name: str,
-        logical_joint: DJoint | None = None,
+        logical_joint: SJoint | None = None,
         is_rotational: bool = False,
         initial_value: float | None = None,
     ) -> None:
@@ -159,7 +159,7 @@ def main() -> None:
     initial_qpos = robot.get_qpos()[0].cpu().numpy()
 
     # Create UI descriptors from HiwonderJoint enum, mapping directly to Manipulator's limits
-    for joint_enum in DJoint:
+    for joint_enum in SJoint:
         if joint_enum.name == "GRIPPER_RIGHT":
             continue
         idx = joint_enum.value
@@ -215,7 +215,7 @@ def main() -> None:
         )
 
     # Add object position sliders
-    current_object_pos = env.object.get_pos()[0].cpu().numpy()
+    current_object_pos = env.objects.get_pos()[0].cpu().numpy()
 
     box_pos_slider_x = Slider(
         20,
@@ -261,7 +261,7 @@ def main() -> None:
                         print(f"{s.name} [Target]: {s.to_display_value(s.value):.3f}{s.unit}")
                     actual_qpos = env.robot._robot_entity.get_qpos()[0].cpu().numpy()
                     print(f"\n--- Physical State ---")
-                    print(f"Actual Left Gripper: {actual_qpos[DJoint.GRIPPER_LEFT]:.5f} m")
+                    print(f"Actual Left Gripper: {actual_qpos[SJoint.GRIPPER_LEFT]:.5f} m")
                     print(f"----------------------\n")
                     sys.stdout.flush()
                 elif btn_grasp_rect.collidepoint(event.pos):
@@ -287,17 +287,17 @@ def main() -> None:
                 slider.value = current_qpos[controlled_dofs[i]["idx"]]
         else:
             # Update targets based on sliders
-            targets: dict[DJoint, int | float | torch.Tensor] = {}
+            targets: dict[SJoint, int | float | torch.Tensor] = {}
             for i, slider in enumerate(sliders[: len(controlled_dofs)]):
                 logical = controlled_dofs[i]["logical_joint"]
-                if isinstance(logical, DJoint):
+                if isinstance(logical, SJoint):
                     targets[logical] = float(slider.value)
     
             # Use Manipulator to apply targets
             env.robot.control_motors(targets)
 
         # Handle object position
-        current_object_pos = env.object.get_pos()[0].cpu().numpy()
+        current_object_pos = env.objects.get_pos()[0].cpu().numpy()
         if box_pos_slider_x.dragging or box_pos_slider_y.dragging:
             # Sync slider state to physics state
             new_pos = torch.tensor(
@@ -305,7 +305,7 @@ def main() -> None:
                 device=gs.device,
                 dtype=torch.float32
             )
-            env.object.set_pos(new_pos, envs_idx=torch.tensor([0], device=gs.device))
+            env.objects.set_pos(new_pos, envs_idx=torch.tensor([0], device=gs.device))
         else:
             # Sync physics state to slider state (in case something bumps it)
             box_pos_slider_x.value, box_pos_slider_y.value = (

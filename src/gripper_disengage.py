@@ -1,6 +1,5 @@
-from robot import RobotArm
+from robot import RobotArm, RJoint
 
 arm = RobotArm()
-arm.move_smooth(0, 270)
-arm.move_smooth(15, 270)
+arm.move_smooth(RJoint.GRIPPER, 270)
 print("Gripper disengaged.")

@@ -10,6 +10,7 @@ wandb/
 models/
 ur5_reinforcement_learning_grasp_object/
 logs/
+metrics/
 .ruff_cache/
 .kilo/
 .lgd-nfy0

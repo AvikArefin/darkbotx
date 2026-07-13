@@ -4,6 +4,7 @@ import time
 
 import types
 from unittest.mock import MagicMock
+from typing import Any
 
 import genesis as gs
 import numpy as np
@@ -18,31 +19,31 @@ sys.modules.update({
 })
 
 # 2. Path Setup
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'code'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # --- Class Definition ---
 class MockServo:
-    def __init__(self, channel, arm):
+    def __init__(self, channel: int, arm: Any) -> None:
         self.channel = channel
         self.arm = arm
         self._angle = float(arm.HOME_POSITION.get(channel, 90.0))
     
     @property
-    def angle(self):
+    def angle(self) -> float:
         return self._angle
     
     @angle.setter
-    def angle(self, value):
+    def angle(self, value: float | None) -> None:
         if value is None:
             return
         self._angle = float(value)
         self.arm._update_sim_single(self.channel, self._angle)
 
-    def set_pulse_width_range(self, min_pulse, max_pulse):
+    def set_pulse_width_range(self, min_pulse: int, max_pulse: int) -> None:
         pass
 
 class MockKit:
-    def __init__(self, arm):
+    def __init__(self, arm: Any) -> None:
         self.servo = {ch: MockServo(ch, arm) for ch in [0, 1, 2, 3, 4, 5, 15]}
 
 class SRobotArm:
@@ -76,10 +77,10 @@ class SRobotArm:
         15: "Slider 37",  # Gripper
     }
 
-    def __init__(self, i2c_bus=None):
+    def __init__(self, i2c_bus: Any = None) -> None:
 
         print("Initializing Genesis Simulation...")
-        gs.init(backend=gs.gpu)
+        gs.init(backend=gs._gs_backend.gpu)
         self.scene = gs.Scene(
             show_viewer=False,
             viewer_options=gs.options.ViewerOptions(
@@ -124,7 +125,7 @@ class SRobotArm:
         self.scene.step()
         print("Genesis Simulation Ready.")
 
-    def _update_target_pos(self, channel, angle):
+    def _update_target_pos(self, channel: int, angle: float) -> None:
         if channel not in self.j_idx: 
             return
         idx = self.j_idx[channel]
@@ -147,12 +148,12 @@ class SRobotArm:
             
         self.target_positions[idx] = val
 
-    def _update_sim_single(self, channel, angle):
+    def _update_sim_single(self, channel: int, angle: float) -> None:
         self._update_target_pos(channel, angle)
         self.robot.control_dofs_position(self.target_positions)
         self.scene.step()
 
-    def move_smooth(self, channel, target_angle, delay=0.01, step_size=2.0):
+    def move_smooth(self, channel: int, target_angle: float, delay: float = 0.01, step_size: float = 2.0) -> bool:
         current = self.current_angles[channel]
         direction = 1 if target_angle > current else -1
         while abs(target_angle - current) > step_size:
@@ -165,7 +166,7 @@ class SRobotArm:
         self._update_sim_single(channel, target_angle)
         return True
 
-    def move_all_smooth(self, target_positions, delay=0.01, max_step=2.0):
+    def move_all_smooth(self, target_positions: dict[int, Any], delay: float = 0.01, max_step: float = 2.0) -> None:
         steps = 30
         start_angles = self.current_angles.copy()
         for i in range(1, steps + 1):
@@ -179,11 +180,11 @@ class SRobotArm:
             self.scene.step()
             time.sleep(0.005)
 
-    def go_home_smooth(self, delay=0.01, max_step=1.0):
+    def go_home_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
         print("Returning to HOME...")
         self.move_all_smooth(self.HOME_POSITION)
 
-    def go_grab_smooth(self, delay=0.01, max_step=1.0):
+    def go_grab_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
         print("Moving to GRAB position...")
         self.move_all_smooth(self.GRAB_POSITION)
 
@@ -195,7 +196,7 @@ sys.modules["robot"] = robot_mock
 
 # 4. Project Imports - Now safe to import because 'robot' is mocked
 from scanner import scan_sequence
-from pointnet import DarkBot, export_dented_to_stl, generate_urdf
+from pointnet import PointNet
 
 def main():
     print("=== STARTING DARKBOT PIPELINE ===")
@@ -235,16 +236,10 @@ def main():
     print("\n[6/9] Initializing PointNet with Live Data...")
     height_val = 5.5 #cm
     obj_name = "starget"
-    darkbot = DarkBot(measurements=live_measurements, height=height_val)
+    darkbot = PointNet(measurements=live_measurements, height=height_val)
 
     print("\n[7/9] Generating 3D Meshes and URDF...")
-    folder_path = f"assets/{obj_name}"
-    os.makedirs(os.path.join(folder_path, "meshes"), exist_ok=True)
-    stl_path = os.path.join(folder_path, "meshes", f"{obj_name}.stl")
-    urdf_path = os.path.join(folder_path, f"{obj_name}.urdf")
-    
-    export_dented_to_stl(darkbot, stl_path)
-    generate_urdf(stl_path, obj_name, scale=0.1, urdf_filepath=urdf_path)
+    stl_path, urdf_path = darkbot.export(obj_name, scale=0.1)
 
     print("\n[8/9] Moving to grab position again...")
     arm.go_grab_smooth()

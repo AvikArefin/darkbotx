@@ -1,6 +1,5 @@
-from robot import RobotArm
+from robot import RobotArm, RJoint
 
 arm = RobotArm()
-arm.move_smooth(0, 250)
-arm.move_smooth(15, 250)
+arm.move_smooth(RJoint.GRIPPER, 250)
 print("Gripper engaged.")

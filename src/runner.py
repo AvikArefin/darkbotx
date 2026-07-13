@@ -4,17 +4,18 @@ import time
 
 from robot import RobotArm
 from scanner import scan_sequence
-from pointnet import DarkBot, export_dented_to_stl, generate_urdf
+from pointnet import PointNet
+
 
 def main():
     print("=== STARTING DARKBOT ORCHESTRATION PIPELINE ===")
 
     print("\n[1/9] Initializing Robot Arm...")
     arm = RobotArm()
-    
+
     print("\n[2/9] Smooth Transition to Grab Position")
     arm.go_grab_smooth()
-    
+
     print("PUT the box")
     time.sleep(5)
 
@@ -30,21 +31,23 @@ def main():
         dist = [m[1] for m in live_measurements]
         # Calculate a characteristic size (e.g., average radius) from the scan data
         avg_measurement = sum(dist) / len(dist)
-        
+
         # Map the measurement to a suitable grip angle.
         # Assuming channel 0 config: 250 is the maximum safe open boundary.
         # We adjust the clamping angle based on the measured object size.
         # (This heuristic maps larger measurements to wider grip angles)
         scale_factor = 2.5
         calculated_angle = int(avg_measurement * scale_factor)
-        
+
         # Clamp the angle to prevent crushing (e.g., min 90) or over-extending (max 250)
         optimal_grip_angle = max(90, min(250, calculated_angle))
-        print(f"Calculated optimal grip angle: {optimal_grip_angle}° from scan average: {avg_measurement:.2f}")
+        print(
+            f"Calculated optimal grip angle: {optimal_grip_angle}° from scan average: {avg_measurement:.2f}"
+        )
     else:
         print("No scan data received. Defaulting to safe grip angle.")
         optimal_grip_angle = 150
-        
+
     arm.move_smooth(0, optimal_grip_angle)
     time.sleep(0.5)
 
@@ -53,20 +56,13 @@ def main():
 
     print("\n[6/9] Initializing PointNet with Live Data...")
     # Object settings
-    height_val = 5.5 #cm
+    height_val = 5.5  # cm
     obj_name = "live_scanned_target"
     # Instantiate the PointNet class using the live data directly
-    darkbot = DarkBot(measurements=live_measurements, height=height_val)
+    darkbot = PointNet(measurements=live_measurements, height=height_val)
 
     print("\n[7/9] Generating 3D Meshes and URDF...")
-    # Setup directory structure
-    folder_path = f"assets/{obj_name}"
-    os.makedirs(os.path.join(folder_path, "meshes"), exist_ok=True)
-    stl_path = os.path.join(folder_path, "meshes", f"{obj_name}.stl")
-    urdf_path = os.path.join(folder_path, f"{obj_name}.urdf")
-    # Generate files
-    export_dented_to_stl(darkbot, stl_path)
-    generate_urdf(stl_path, obj_name, scale=0.1, urdf_filepath=urdf_path)
+    stl_path, urdf_path = darkbot.export(obj_name, scale=0.1)
 
     print("Launching visualization...")
     darkbot.visualize()
@@ -89,6 +85,7 @@ def main():
 
     arm.go_home_smooth()
     print("\n=== PIPELINE COMPLETE ===")
-    
+
+
 if __name__ == "__main__":
     main()

@@ -4,11 +4,11 @@ import os
 
 # Add the src directory to path so config can be imported if run from elsewhere
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from config import DJoint
+from config import SJoint
 
 def main():
     # Initialize genesis with CPU backend since we just want to parse the URDF
-    gs.init(backend=gs.cpu)
+    gs.init(backend=gs._gs_backend.cpu)
     
     scene = gs.Scene(show_viewer=False)
     
@@ -27,13 +27,13 @@ def main():
     print(f"{'Logical Name':<15} | {'Joint Name':<12} | {'Type':<10} | {'Lower Limit':<12} | {'Upper Limit'}")
     print("-" * 80)
     
-    target_dofs = (DJoint.WRIST_ROLL, DJoint.GRIPPER_LEFT)
+    target_dofs = (SJoint.WRIST_ROLL, SJoint.GRIPPER_LEFT)
     
     for joint in robot.joints:
         if len(joint.dofs_idx_local) > 0:
             dof_idx = joint.dofs_idx_local[0]
             if dof_idx in target_dofs:
-                logical_name: str = DJoint(dof_idx).name
+                logical_name: str = SJoint(dof_idx).name
                 limit = joint.dofs_limit
                 if limit[0] is not None:
                     lower = float(limit[0][0])

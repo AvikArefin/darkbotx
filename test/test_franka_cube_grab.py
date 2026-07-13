@@ -3,12 +3,13 @@ import genesis as gs
 import pygame
 import tkinter as tk
 from tkinter import simpledialog
+from typing import Any
 
 WINDOW_SIZE = (420, 800)
 FPS = 60
 
 
-def ask_value(name, current_display, unit, min_display, max_display):
+def ask_value(name: str, current_display: float, unit: str, min_display: float, max_display: float) -> float | None:
     """
     Open a native OS modal dialog to get a numeric value from the user.
     Runs on the main thread, blocking everything (including scene.step),
@@ -33,16 +34,16 @@ def ask_value(name, current_display, unit, min_display, max_display):
 class Slider:
     def __init__(
         self,
-        x,
-        y,
-        w,
-        h,
-        min_val,
-        max_val,
-        name,
-        is_rotational=False,
-        initial_value=None,
-    ):
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        min_val: float,
+        max_val: float,
+        name: str,
+        is_rotational: bool = False,
+        initial_value: float | None = None,
+    ) -> None:
         self.rect = pygame.Rect(x, y, w, h)
         self.min_val = min_val
         self.max_val = max_val
@@ -57,17 +58,17 @@ class Slider:
 
         self.edit_btn_rect = pygame.Rect(x + w + 5, y, 60, h)
 
-    def to_display_value(self, val):
+    def to_display_value(self, val: float) -> float:
         return np.rad2deg(val) if self.is_rotational else val
 
-    def from_display_value(self, val):
+    def from_display_value(self, val: float) -> float:
         return np.deg2rad(val) if self.is_rotational else val
 
     @property
     def unit(self):
         return "deg" if self.is_rotational else "m"
 
-    def handle_event(self, event):
+    def handle_event(self, event: Any) -> bool:
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.edit_btn_rect.collidepoint(event.pos):
                 return True
@@ -100,7 +101,7 @@ class Slider:
                 min(self.max_val, self.from_display_value(result)),
             )
 
-    def draw(self, surface, font):
+    def draw(self, surface: Any, font: Any) -> None:
         pygame.draw.rect(surface, (128, 128, 128), self.rect)
         t = (
             (self.value - self.min_val) / (self.max_val - self.min_val)
@@ -127,7 +128,7 @@ class Slider:
 
 
 def main():
-    gs.init(backend=gs.gpu)
+    gs.init(backend=gs._gs_backend.gpu)
 
     scene = gs.Scene(
         show_viewer=True,
@@ -178,7 +179,7 @@ def main():
         
     target_positions = init_dof_pos.copy()
 
-    controlled_dofs = []
+    controlled_dofs: list[dict[str, Any]] = []
     # Automatically map ALL valid revolute and prismatic joints
     for joint in robot.joints:
         pos_limit = joint.dofs_limit

@@ -21,8 +21,8 @@ dependencies = [
     "rpi-lgpio>=0.6; sys_platform == 'linux' and platform_machine == 'aarch64'",
     "pygame>=2.6.1",
     "genesis-world>=1.2.1",
-    "mtrick>=0.2.0",
     "shapely>=2.1.2",
+    "mtrick>=0.4.0",
 ]
 
 [tool.pyrefly]

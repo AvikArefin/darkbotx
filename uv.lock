@@ -413,7 +413,7 @@ requires-dist = [
     { name = "genesis-world", specifier = ">=1.2.1" },
     { name = "grpcio", specifier = "!=1.78.1" },
     { name = "mapbox-earcut", specifier = ">=2.0.0" },
-    { name = "mtrick", specifier = ">=0.2.0" },
+    { name = "mtrick", specifier = ">=0.4.0" },
     { name = "numpy-stl", specifier = ">=3.2.0" },
     { name = "pygame", specifier = ">=2.6.1" },
     { name = "rpi-lgpio", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", specifier = ">=0.6" },
@@ -1307,11 +1307,11 @@ wheels = [
 
 [[package]]
 name = "mtrick"
-version = "0.2.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/74/9f/4e7b156641ef001c0ba1feecea67684076bd5147d4284e0651360f14b6f4/mtrick-0.2.0.tar.gz", hash = "sha256:5bc2a99bd4bd71a69a95282960723382019cacdc33ee83483edcacf4c014e355", size = 13916, upload-time = "2026-07-01T06:49:21.008Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/3e/5b6e7ed08bb725588c88f7da10c50b0c65e66cc9eda493ccb46fee755769/mtrick-0.4.0.tar.gz", hash = "sha256:91c33f8111853a1bdd1e16ae0f443f4077a5978806e93c58d223aecc43cc4337", size = 18410, upload-time = "2026-07-12T03:58:04.996Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/c2/844d4c68948f156b85c498677f86fe660c9a368064a8513aad80e3b5ea6e/mtrick-0.2.0-py3-none-any.whl", hash = "sha256:a8ba048fc9860bcaaf11324a7240e3e2108e9ce8b2fe3c5b85d25a8879679d96", size = 15580, upload-time = "2026-07-01T06:49:22.146Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/13/789f49bfc1365bd68b289a122dc1660e5b845443629f1007636792813864/mtrick-0.4.0-py3-none-any.whl", hash = "sha256:0357e487adae4ebb3bab3b8a608059fa7d434f36e1214d603af5370d22c42501", size = 20032, upload-time = "2026-07-12T03:58:05.971Z" },
 ]
 
 [[package]]

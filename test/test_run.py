@@ -1,7 +1,9 @@
+import sys
+import os
 import time
 import random
-
-from code.robot import RobotArm
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
+from robot import RobotArm
 
 def adapter_angle_to_width(angle: float, max_angle: float = 250.0, min_angle: float = 0.0, max_width: float = 11.20, min_width: float = 6.2) -> float:
     """
@@ -42,7 +44,7 @@ def scan_sequence(arm: RobotArm, slice: int) -> list[tuple[float, float, str]]:
     home_angle = arm.HOME_POSITION[GRIPPER_F]
     closed_angle = 0.0
 
-    scan_results = []
+    scan_results: list[tuple[float, float, str]] = []
 
     print("Initializing gripper FINGERS to home position...")
     arm.move_smooth(GRIPPER_F, home_angle)

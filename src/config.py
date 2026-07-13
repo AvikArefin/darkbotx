@@ -1,19 +1,21 @@
 from enum import IntEnum
 
 
-class DJoint(IntEnum):
+class SJoint(IntEnum):
     """
-    Hiwonder Joints
+    Hiwonder Sim Joints
 
     Don't use GRIPPER_RIGHT that one is already mirrored from gripper left
     """
-    BASE = 0           
-    SHOULDER = 1     
-    ELBOW = 2          
-    WRIST = 3     
-    WRIST_ROLL = 4        
-    GRIPPER_LEFT = 5    
-    GRIPPER_RIGHT = 6  
+
+    BASE = 0
+    SHOULDER = 1
+    ELBOW = 2
+    WRIST = 3
+    WRIST_ROLL = 4
+    GRIPPER_LEFT = 5
+    GRIPPER_RIGHT = 6
+
 
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> RSL_RL >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
@@ -22,7 +24,7 @@ RL_POLICY_CFG = {
         "class_name": "PPO",
         "clip_param": 0.2,
         "desired_kl": 0.01,
-        "entropy_coef": 0.0,
+        "entropy_coef": 0.03,
         "gamma": 0.99,
         "lam": 0.95,
         "learning_rate": 0.0003,
@@ -49,12 +51,22 @@ RL_POLICY_CFG = {
         "activation": "relu",
     },
     "obs_groups": {
-        "actor": ["object_2d_profile", "object_height", "current_gripper_state"],
-        "critic": ["object_2d_profile", "object_height", "current_gripper_state"],
+        "actor": [
+            "object_2d_profile",
+            "object_yaw",
+            "object_height",
+            "current_gripper_state",
+        ],
+        "critic": [
+            "object_2d_profile",
+            "object_yaw",
+            "object_height",
+            "current_gripper_state",
+        ],
     },
     "num_steps_per_env": 1,
-    "save_interval": 100,
-    "num_max_iteration": 300,
+    "save_interval": 25,
+    "num_max_iteration": 100,
 }
 
 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< RSL_RL <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -64,34 +76,41 @@ RL_POLICY_CFG = {
 
 BASE_ENV_CFG = {
     "num_actions": 2,
-
     # Debug / Actual Observation Related
     "image_resolution": (1280, 960),
     "vis_mode": None,
     "debug_draw": False,
     "debug_dashboard": False,
     "debugline": False,
-
+    "use_mtrick": False,
     # ROBOT RELATED
     "path": "assets/Hiwonder/Hiwonder.urdf",
     "rl_start_angles": [0.1, 0.2, 0, 0.0, 0, 0.0, 0.0],
-
     # Object related
     "object_spawn_pos": (-0.0061, -0.0617, 0.015),
-    "object_type": "urdf", # Change this to "box" or "urdf" to swap shapes
+    "object_spawn_yaw": 0.0,
+    "object_type": "random",  # Can be "random" or a specific type like "cube", "rect", "star", "box"
+    "num_periphery_points": 16,
     "object_configs": {
-        "box": {
-            "size": [0.03, 0.03, 0.03],
+        # "box": {
+        #     # "size": [0.03, 0.03, 0.03],
+        #     "file": "assets/box/box.urdf",
+        #     "fixed": False,
+        #     # "batch_fixed_verts": True,
+        # },
+        "cube": {
+            "file": "assets/cube/cube.urdf",
             "fixed": False,
-            "batch_fixed_verts": True,
         },
-        "urdf": {
-            "file": "assets/cube/cube.urdf", 
+        "rect": {
+            "file": "assets/rect/rect.urdf",
             "fixed": False,
-        }
+        },
+        # "star": {
+        #     "file": "assets/star/star.urdf",
+        #     "fixed": False,
+        # },
     },
-
-
 }
 
 TRAIN_ENV_CFG = {
@@ -104,14 +123,17 @@ EVAL_ENV_CFG = {
     **BASE_ENV_CFG,
     "num_envs": 1,
     "show_viewer": True,
+    "object_type": "rect"
 }
 
 TEST_ENV_CFG = {
     **BASE_ENV_CFG,
-    "num_envs": 1,
-    "vis_mode": 'collision',
+    "num_envs": 3,
+    "vis_mode": "collision",
     "show_viewer": True,
-    "debug_dashboard": True, 
+    "debug_dashboard": False,
+    "debug_draw": True,
+    "use_mtrick": True,
 }
 
 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< ENV_CFG <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<

@@ -1,5 +1,5 @@
 import genesis as gs
-gs.init(backend=gs.cpu)
+gs.init(backend=gs._gs_backend.cpu)
 scene = gs.Scene(show_viewer=False)
 robot = scene.add_entity(gs.morphs.MJCF(file='xml/franka_emika_panda/panda.xml'))
 scene.build()

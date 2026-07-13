@@ -1,4 +1,4 @@
-import RPi.GPIO as GPIO  # rpi-lgpio provides this exact interface
+import RPi.GPIO as GPIO  # type: ignore # rpi-lgpio provides this exact interface
 import time
 
 GPIO.setmode(GPIO.BCM)
