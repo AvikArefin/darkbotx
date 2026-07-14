@@ -70,12 +70,19 @@ class Sensor:
 
 
 if __name__ == "__main__":
+    _i2c_bus = None
     try:
         import board
+        import time
         _i2c_bus = busio.I2C(board.SCL, board.SDA)
         sensor = Sensor(channels=4, i2c=_i2c_bus)
         print(sensor.init_volts)
-        print(sensor.get_all_voltages())
+        while True:
+            print(sensor.get_all_voltages())
+            time.sleep(0.1)
 
+    except KeyboardInterrupt:
+        print("\nStopped printing voltages.")
     finally:
-        _i2c_bus.deinit()
+        if _i2c_bus is not None:
+            _i2c_bus.deinit()

@@ -239,7 +239,19 @@ class RobotArm:
         self.move_all_smooth(self.GRAB_POSITION, delay, max_step)
         print("Arm is now in GRAB position.")
 
-    def gripper_close_till(self, delay: float = 0.01) -> tuple[float, float, str]:
+    def angle2length(self, length_in_angle: float)-> float:
+        """
+        length
+        min = 2 cm 
+        max = 6.5 cm
+        
+        angle 
+        min = 0
+        max = 250
+        """
+        return 2.0 + (length_in_angle - 0.0) * (6.5 - 2.0) / (250.0 - 0.0)
+
+    def gripper_close_till_obstacle(self, delay: float = 0.01) -> float:
         channel = RJoint.GRIPPER
         current_angle = self.current_angles.get(
             channel, float(self.HOME_POSITION.get(channel, 250))
@@ -250,10 +262,16 @@ class RobotArm:
 
         while current_angle > 0:
             left = self.sensor.get_voltage(pin=Pin.LEFT_FLEX)
-            right = self.sensor.get_voltage(pin=Pin.RIGHT_FLEX)
+            # right = self.sensor.get_voltage(pin=Pin.RIGHT_FLEX)
 
             # Stop when BOTH sensors drop below the threshold (indicating solid contact)
-            if left < init_left - 0.1 and right < init_right - 0.1:
+            # TODO: we would need to decide on `or` and `and` and also when the data capture should occur.
+            # For test purpose, we will be only checking the left flex as the rest of the values are floating (constantly changing), 
+            # when non connected.
+            
+            # if left < init_left - 0.1 and right < init_right - 0.1:
+            #     break
+            if left < init_left - 0.1:
                 break
 
             # Incrementally close towards 0 degrees
@@ -262,12 +280,8 @@ class RobotArm:
             self.current_angles[channel] = current_angle
 
             time.sleep(delay)
-
-        # Final read for the return structure
-        left = self.sensor.get_voltage(pin=Pin.LEFT_FLEX)
-        right = self.sensor.get_voltage(pin=Pin.RIGHT_FLEX)
-
-        return (left, right, "both")
+        
+        return self.angle2length(current_angle)
 
     def gripper_open(self):
         self.move_smooth(channel=RJoint.GRIPPER, target_angle=250)
@@ -279,9 +293,9 @@ class RobotArm:
         scan_results: list[tuple[float, float, str]] = []
         for i in range(slice):
             self.move_smooth(channel=RJoint.WRIST_ROLL, target_angle=angle)
-            scan_result: tuple[float, float, str] = self.gripper_close_till()
+            length = self.gripper_close_till_obstacle()
             self.gripper_open()
+            scan_results.append((angle, length, "both"))
             angle += increment_value
-            scan_results.append(scan_result)
 
         return scan_results

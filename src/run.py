@@ -10,40 +10,42 @@ if __name__ == "__main__":
     print("=================== DARKBOTX ===================")
     arm = RobotArm()
     try:
-        arm.go_grab_smooth()
-        time.sleep(5)
+        # arm.go_grab_smooth()
+        # time.sleep(5)
 
-        scan_results: list[tuple[float, float, str]] = arm.scan(slice=3)
+        scan_results: list[tuple[float, float, str]] = arm.scan(slice=2)
 
-        object = PointNet(measurements=scan_results, height=5.5)
+        print(scan_results)
+
+        object = PointNet(measurements=scan_results, height=3)
         object.export("test", scale=0.006)
 
-        arm.go_home_smooth()
+        # arm.go_home_smooth()
 
 
-        policy_path = "logs/real/deployed_policy.pt"
-        policy = torch.jit.load(policy_path, map_location="cpu")
-        policy.eval()  
+        # policy_path = "logs/real/deployed_policy.pt"
+        # policy = torch.jit.load(policy_path, map_location="cpu")
+        # policy.eval()  
 
 
-        # TODO: Properly create the observation tensor
-        obs = torch.cat([
-            periphery_2d,
-            object_yaw,
-            object_height,
-            current_gripper_state,
-        ], dim=-1) 
+        # # TODO: Properly create the observation tensor
+        # obs = torch.cat([
+        #     periphery_2d,
+        #     object_yaw,
+        #     object_height,
+        #     current_gripper_state,
+        # ], dim=-1) 
 
-        with torch.no_grad():
-            action = policy(obs)
+        # with torch.no_grad():
+        #     action = policy(obs)
             
-        arm.move_smooth(RJoint.WRIST_ROLL, action[0][0])
-        arm.move_smooth(RJoint.WRIST, action[0][1])
+        # arm.move_smooth(RJoint.WRIST_ROLL, action[0][0])
+        # arm.move_smooth(RJoint.WRIST, action[0][1])
 
         # TODO: lift while holding the object
         # TODO: put down the object
 
-        arm.go_home_smooth()
+        # arm.go_home_smooth()
         
 
     except KeyboardInterrupt:
