@@ -29,7 +29,6 @@ class SensorError(Exception):
 # should indicate that the we are getting `force` i.e. data on that sensor
 # the v_min and v_max needs to be dynamic
 class Sensor:
-    # def __init__(self, i2c_bus: busio.I2C, v_min: float, v_max: float):
     def __init__(self, channels: int, i2c: busio.I2C) -> None:
         try:
             self.channels = channels
@@ -40,6 +39,8 @@ class Sensor:
             self.ports = [AnalogIn(self.ads, i) for i in range(self.channels)]
 
             self._initialized = True
+            # Warmup First to get correct values
+            self.get_all_voltages()
             self.init_volts = self.get_all_voltages()
 
 
@@ -73,6 +74,7 @@ if __name__ == "__main__":
         import board
         _i2c_bus = busio.I2C(board.SCL, board.SDA)
         sensor = Sensor(channels=4, i2c=_i2c_bus)
+        print(sensor.init_volts)
         print(sensor.get_all_voltages())
 
     finally:
