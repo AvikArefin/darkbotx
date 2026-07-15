@@ -63,14 +63,24 @@ class RobotArm:
         15: WIDE_GRIP,
     }
 
+    PUT_POSITION: dict[int, int] = {
+        # 0: 10,
+        1: 0,
+        2: 0,
+        3: 50,
+        4: 120,
+        5: 105,
+        # 15: 10,
+    }
+
     LIFT_POSITION: dict[int, int] = {
-        0: 10,
+        # 0: 10,
         1: 0,
         2: 90,
         3: 90,
         4: 90,
         5: 105,
-        15: 10,
+        # 15: 10,
     }
 
     GRAB_POSITION: dict[int, int] = {
@@ -190,7 +200,7 @@ class RobotArm:
             if safe_target != target:
                 print(f"Ch{ch}: Target {target}° clamped to {safe_target}°")
 
-            current = self.current_angles.get(ch, float(self.HOME_POSITION.get(ch, 90)))
+            current = self.current_angles.get(ch, float(self.HOME_POSITION[ch]))
             start_angles[ch] = current
             distances[ch] = safe_target - current
 
@@ -237,6 +247,12 @@ class RobotArm:
         self.move_all_smooth(self.LIFT_POSITION, delay, max_step)
         print("Arm is now at LIFT.")
 
+    def go_put_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
+        """Smoothly and simultaneously moves all servos to PUT."""
+        print("\nReturning to PUT position smoothly...")
+        self.move_all_smooth(self.PUT_POSITION, delay, max_step)
+        print("Arm is now at PUT.")
+
     def go_grab_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
         """Smoothly and simultaneously moves all servos to GRAB position."""
         print("\nMoving to GRAB position smoothly...")
@@ -276,7 +292,7 @@ class RobotArm:
             
             # if left < init_left - 0.1 and right < init_right - 0.1:
             #     break
-            if left < init_left - 0.1:
+            if abs(left - init_left) > 0.1:
                 break
 
             # Incrementally close towards 0 degrees
@@ -286,21 +302,25 @@ class RobotArm:
 
             time.sleep(delay)
         
-        return self.angle2length(current_angle)
+        return current_angle
 
     def gripper_open(self):
         self.move_smooth(channel=RJoint.GRIPPER, target_angle=WIDE_GRIP)
         pass
 
-    def scan(self, slice: int) -> list[tuple[float, float, str]]:
-        angle = 0
+    def scan(self, slice: int) -> tuple[list[tuple[float, float, str]], tuple[float, float]]:
+        wrist_angle = 0
         increment_value: float = 180 / slice
         scan_results: list[tuple[float, float, str]] = []
+        emergency: tuple[float, float] = (0.0, float('inf'))
         for i in range(slice):
-            self.move_smooth(channel=RJoint.WRIST_ROLL, target_angle=angle)
-            length = self.gripper_close_till_obstacle()
+            self.move_smooth(channel=RJoint.WRIST_ROLL, target_angle=wrist_angle)
+            gripper_angle = self.gripper_close_till_obstacle()
+            length = self.angle2length(gripper_angle)
             self.gripper_open()
-            scan_results.append((angle, length, "both"))
-            angle += increment_value
+            scan_results.append((wrist_angle, length, "both"))
+            if gripper_angle < emergency[1]:
+                emergency = (wrist_angle, gripper_angle)
+            wrist_angle += increment_value
 
-        return scan_results
+        return scan_results, emergency

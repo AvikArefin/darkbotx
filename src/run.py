@@ -13,39 +13,44 @@ if __name__ == "__main__":
         arm.go_grab_smooth()
         time.sleep(5)
 
-        scan_results: list[tuple[float, float, str]] = arm.scan(slice=2)
+        results, emergency= arm.scan(slice=2)
 
-        print(scan_results)
+        print(results)
 
-        object = PointNet(measurements=scan_results, height=3)
+        object = PointNet(measurements=results, height=3)
         object.export("test", scale=0.006)
 
         arm.go_home_smooth()
 
+        try:
+            policy_path = "logs/real/deployed_policy.pt"
+            policy = torch.jit.load(policy_path, map_location="cpu")
+            policy.eval()  
 
-        # policy_path = "logs/real/deployed_policy.pt"
-        # policy = torch.jit.load(policy_path, map_location="cpu")
-        # policy.eval()  
+            # TODO: Properly create the observation tensor
+            obs = torch.cat([
+                periphery_2d,
+                object_yaw,
+                object_height,
+                current_gripper_state,
+            ], dim=-1) 
 
+            with torch.no_grad():
+                action = policy(obs)
 
-        # # TODO: Properly create the observation tensor
-        # obs = torch.cat([
-        #     periphery_2d,
-        #     object_yaw,
-        #     object_height,
-        #     current_gripper_state,
-        # ], dim=-1) 
+            arm.move_smooth(RJoint.WRIST_ROLL, action[0][0])
+            arm.move_smooth(RJoint.WRIST, action[0][1])
 
-        # with torch.no_grad():
-        #     action = policy(obs)
-            
-        # arm.move_smooth(RJoint.WRIST_ROLL, action[0][0])
-        # arm.move_smooth(RJoint.WRIST, action[0][1])
+        except Exception:
+            # TODO: Emergency Policy
+            arm.move_smooth(RJoint.WRIST_ROLL, emergency[0])
+            arm.move_smooth(RJoint.WRIST, emergency[1])
 
-        # TODO: lift while holding the object
-        # TODO: put down the object
+        arm.go_lift_smooth()  # DOES NOT CONTROL GRIPPER
+        arm.go_put_smooth()   # DOES NOT CONTROL GRIPPER
+        arm.go_grab_smooth()
 
-        # arm.go_home_smooth()
+        arm.go_home_smooth()
         
 
     except KeyboardInterrupt:
