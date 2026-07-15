@@ -277,9 +277,12 @@ class RobotArm:
         current_angle = self.current_angles.get(
             channel, float(self.HOME_POSITION.get(channel, WIDE_GRIP))
         )
+        
+        # Warmup
+        _ = self.sensor.get_all_voltages()
 
-        init_left = self.sensor.init_volts[Pin.LEFT_FLEX]
-        init_right = self.sensor.init_volts[Pin.RIGHT_FLEX]
+        init_left = self.sensor.get_voltage(pin=Pin.LEFT_FLEX)
+        init_right = self.sensor.get_voltage(pin=Pin.RIGHT_FLEX)
 
         while current_angle > 0:
             left = self.sensor.get_voltage(pin=Pin.LEFT_FLEX)
