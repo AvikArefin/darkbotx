@@ -39,12 +39,12 @@ if __name__ == "__main__":
                 action = policy(obs)
 
             arm.move_smooth(RJoint.WRIST_ROLL, action[0][0])
-            arm.move_smooth(RJoint.WRIST, action[0][1])
+            arm.move_smooth(RJoint.GRIPPER, action[0][1])
 
         except Exception:
             # TODO: Emergency Policy
             arm.move_smooth(RJoint.WRIST_ROLL, emergency[0])
-            arm.move_smooth(RJoint.WRIST, emergency[1])
+            arm.move_smooth(RJoint.GRIPPER, emergency[1])
 
         arm.go_lift_smooth()  # DOES NOT CONTROL GRIPPER
         arm.go_put_smooth()   # DOES NOT CONTROL GRIPPER
