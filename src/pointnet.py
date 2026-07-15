@@ -239,7 +239,7 @@ def generate_urdf(stl_filepath: str, name: str, scale: float, urdf_filepath: str
     print("watertight: ", mesh.is_watertight)
 
     mesh.apply_scale(scale)
-    mesh.density = 1250
+    mesh.density = 1000
     I = mesh.moment_inertia
 
     print(I)

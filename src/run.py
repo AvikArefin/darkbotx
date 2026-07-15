@@ -10,8 +10,8 @@ if __name__ == "__main__":
     print("=================== DARKBOTX ===================")
     arm = RobotArm()
     try:
-        # arm.go_grab_smooth()
-        # time.sleep(5)
+        arm.go_grab_smooth()
+        time.sleep(5)
 
         scan_results: list[tuple[float, float, str]] = arm.scan(slice=2)
 
@@ -20,7 +20,7 @@ if __name__ == "__main__":
         object = PointNet(measurements=scan_results, height=3)
         object.export("test", scale=0.006)
 
-        # arm.go_home_smooth()
+        arm.go_home_smooth()
 
 
         # policy_path = "logs/real/deployed_policy.pt"

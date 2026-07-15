@@ -3,14 +3,15 @@ import os
 import time
 import random
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
-from robot import RobotArm
+from robot import RobotArm, WIDE_GRIP
 
-def adapter_angle_to_width(angle: float, max_angle: float = 250.0, min_angle: float = 0.0, max_width: float = 11.20, min_width: float = 6.2) -> float:
+def adapter_angle_to_width(angle: float, max_angle: float = WIDE_GRIP, min_angle: float = 0.0, max_width: float = 11.20, min_width: float = 6.2) -> float:
     """
     Converts the FINGER servo angle to a physical width (mm).
-    MAX (250°) -> 11.2cm
+    MAX (WIDE_GRIP) -> 11.2cm
     MIN (0°)   -> 6.2cm
     """
+    # TODO: Subject to tuning
     angle = max(min_angle, min(max_angle, angle))
     width = min_width + (angle - min_angle) * ((max_width - min_width) / (max_angle - min_angle))
     return width

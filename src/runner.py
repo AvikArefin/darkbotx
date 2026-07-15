@@ -1,3 +1,4 @@
+from robot import WIDE_GRIP
 import os
 import atexit
 import time
@@ -33,14 +34,14 @@ def main():
         avg_measurement = sum(dist) / len(dist)
 
         # Map the measurement to a suitable grip angle.
-        # Assuming channel 0 config: 250 is the maximum safe open boundary.
+        # Assuming channel 0 config: [WIDE_GRIP] is the maximum safe open boundary.
         # We adjust the clamping angle based on the measured object size.
         # (This heuristic maps larger measurements to wider grip angles)
         scale_factor = 2.5
         calculated_angle = int(avg_measurement * scale_factor)
 
-        # Clamp the angle to prevent crushing (e.g., min 90) or over-extending (max 250)
-        optimal_grip_angle = max(90, min(250, calculated_angle))
+        # Clamp the angle to prevent crushing (e.g., min 90) or over-extending (max WIDE_GRIP)
+        optimal_grip_angle = max(90, min(WIDE_GRIP, calculated_angle))
         print(
             f"Calculated optimal grip angle: {optimal_grip_angle}° from scan average: {avg_measurement:.2f}"
         )
@@ -78,9 +79,9 @@ def main():
     arm.move_all_smooth(place_target)
     time.sleep(0.5)
 
-    # Open the gripper back to 250 to release the object
+    # Open the gripper back to [WIDE_GRIP] to release the object
     print("Releasing object...")
-    arm.move_smooth(0, 250)
+    arm.move_smooth(0, WIDE_GRIP)
     time.sleep(0.5)
 
     arm.go_home_smooth()

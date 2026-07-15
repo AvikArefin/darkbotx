@@ -24,6 +24,10 @@ class RJoint(IntEnum):
     GRIPPER = 15
     # GRIPPER_RIGHT = 6
 
+WIDE_GRIP = 245
+
+MIN_LENGTH = 1.4
+MAX_LENGTH = 6.4
 
 @dataclass(frozen=True)
 class ServoConfig:
@@ -46,17 +50,17 @@ class RobotArm:
     }
 
     # Going till 270 would cause fingers to go out of teeth.
-    # which means, the fingers would come out. So, we are going till 250.
+    # which means, the fingers would come out. So, we are going till [WIDE_GRIP].
     # 15 is simply a dummy used for testing similar behaviour as 0 i.e. gripper fingers
 
     HOME_POSITION: dict[int, int] = {
-        0: 250,
+        0: WIDE_GRIP,
         1: 0,
         2: 90,
         3: 90,
         4: 90,
         5: 105,
-        15: 250,
+        15: WIDE_GRIP,
     }
 
     LIFT_POSITION: dict[int, int] = {
@@ -70,13 +74,13 @@ class RobotArm:
     }
 
     GRAB_POSITION: dict[int, int] = {
-        0: 250,
+        0: WIDE_GRIP,
         1: 0,
         2: 0,
         3: 50,
         4: 120,
         5: 105,
-        15: 250,
+        15: WIDE_GRIP,
     }
 
     def __init__(self):
@@ -242,19 +246,20 @@ class RobotArm:
     def angle2length(self, length_in_angle: float)-> float:
         """
         length
-        min = 2 cm 
-        max = 6.5 cm
+        min = 1.2 cm 
+        max = 6.2 cm [for WIDE_GRIP == 245]
         
         angle 
         min = 0
-        max = 250
+        max = WIDE_GRIP
         """
-        return 2.0 + (length_in_angle - 0.0) * (6.5 - 2.0) / (250.0 - 0.0)
+        # TODO: NEEDS TUNING
+        return MIN_LENGTH + length_in_angle * (MAX_LENGTH - MIN_LENGTH) / WIDE_GRIP
 
     def gripper_close_till_obstacle(self, delay: float = 0.01) -> float:
         channel = RJoint.GRIPPER
         current_angle = self.current_angles.get(
-            channel, float(self.HOME_POSITION.get(channel, 250))
+            channel, float(self.HOME_POSITION.get(channel, WIDE_GRIP))
         )
 
         init_left = self.sensor.init_volts[Pin.LEFT_FLEX]
@@ -284,7 +289,7 @@ class RobotArm:
         return self.angle2length(current_angle)
 
     def gripper_open(self):
-        self.move_smooth(channel=RJoint.GRIPPER, target_angle=250)
+        self.move_smooth(channel=RJoint.GRIPPER, target_angle=WIDE_GRIP)
         pass
 
     def scan(self, slice: int) -> list[tuple[float, float, str]]:

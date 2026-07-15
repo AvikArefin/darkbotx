@@ -3,6 +3,7 @@ import random
 import math
 from typing import Any
 
+from robot import WIDE_GRIP
 # from robot import RobotArm
 
 
@@ -16,9 +17,9 @@ class MockKit:
 
 
 class RobotArm:
-    # Assuming 250.0 is home based on your adapter_angle_to_width max_angle
-    HOME_POSITION = {1: 0.0, 15: 250.0}
-    current_angles = {1: 0.0, 15: 250.0}
+    # Assuming WIDE_GRIP.0 is home based on your adapter_angle_to_width max_angle
+    HOME_POSITION = {1: 0.0, 15: WIDE_GRIP}
+    current_angles = {1: 0.0, 15: WIDE_GRIP}
     kit = MockKit()
 
     def move_smooth(self, channel: int, angle: float) -> None:
@@ -31,7 +32,7 @@ class RobotArm:
 
 def adapter_angle_to_width(
     angle: float,
-    max_angle: float = 250.0,
+    max_angle: float = WIDE_GRIP,
     min_angle: float = 0.0,
     max_width: float = 11.20,
     min_width: float = 6.2,
@@ -41,6 +42,7 @@ def adapter_angle_to_width(
     MAX (250°) -> 11.2cm
     MIN (0°)   -> 6.2cm
     """
+    # TODO: Subject to tuning [WIDE_GRIP]
     # Ensure angle is within bounds
     angle = max(min_angle, min(max_angle, angle))
 
@@ -94,7 +96,8 @@ def read_sensors(
 
     # Calculate what finger angle corresponds to this target physical width
     # Inverting the logic from adapter_angle_to_width()
-    max_angle, min_angle = 250.0, 0.0
+    # TODO: Subject to tuning
+    max_angle, min_angle = WIDE_GRIP, 0.0
     max_width, min_width = 11.20, 6.2
 
     # Check if width is within measurable limits, cap if necessary

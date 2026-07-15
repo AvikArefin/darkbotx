@@ -8,6 +8,7 @@ from typing import Any
 
 import genesis as gs
 import numpy as np
+from robot import WIDE_GRIP
 
 
 # 1. Hardware Mocks - Must happen before any project imports
@@ -59,11 +60,11 @@ class SRobotArm:
     }
     
     HOME_POSITION: dict[int, int] = {
-        0: 250, 1: 0, 2: 90, 3: 90, 4: 90, 5: 105, 15: 250,
+        0: WIDE_GRIP, 1: 0, 2: 90, 3: 90, 4: 90, 5: 105, 15: WIDE_GRIP,
     }
 
     GRAB_POSITION: dict[int, int] = {
-        0: 250, 1: 0, 2: 0, 3: 37, 4: 130, 5: 105, 15: 250,
+        0: WIDE_GRIP, 1: 0, 2: 0, 3: 37, 4: 130, 5: 105, 15: WIDE_GRIP,
     }
     
     # Updated to match the new URDF mapping
@@ -132,7 +133,7 @@ class SRobotArm:
         
         if channel in [0, 15]: # Gripper
             # Slider 37 limits are [-0.01, 0.02] m (Total range: 0.03)
-            val = (angle / 250.0) * 0.03 - 0.01
+            val = (angle / WIDE_GRIP) * 0.03 - 0.01
         elif channel == 1: # Wrist Rot
             val = np.deg2rad(angle)
         elif channel == 2: # Wrist
@@ -221,7 +222,7 @@ def main():
         scale_factor = 25.0 
         calculated_angle = int(avg_measurement * scale_factor)
         
-        optimal_grip_angle = max(90, min(250, calculated_angle))
+        optimal_grip_angle = max(90, min(WIDE_GRIP, calculated_angle))
         print(f"Calculated optimal grip angle: {optimal_grip_angle} from scan average: {avg_measurement:.2f}")
     else:
         print("No scan data received. Defaulting to safe grip angle.")
@@ -251,7 +252,7 @@ def main():
     time.sleep(0.5)
 
     print("Releasing object...")
-    arm.move_smooth(0, 250)
+    arm.move_smooth(0, WIDE_GRIP)
     time.sleep(1.0)
 
     print("\n=== PIPELINE COMPLETE ===")
