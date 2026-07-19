@@ -63,12 +63,12 @@ class RobotArm:
         15: WIDE_GRIP,
     }
 
-    PUTPICK_POSITION: dict[int, int] = {
+    PUT_POSITION: dict[int, int] = {
         # 0: 10,
         # 1: 0,
         2: 0,
         3: 50,
-        4: 120,
+        4: 115,
         5: 105,
         # 15: 10,
     }
@@ -88,7 +88,7 @@ class RobotArm:
         1: 0,
         2: 0,
         3: 50,
-        4: 120,
+        4: 115,
         5: 105,
         15: WIDE_GRIP,
     }
@@ -247,10 +247,10 @@ class RobotArm:
         self.move_all_smooth(self.LIFT_POSITION, delay, max_step)
         print("Arm is now at LIFT.")
 
-    def go_putpick_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
-        """Smoothly and simultaneously moves all servos to PUT / PICK position."""
+    def go_put_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
+        """Smoothly and simultaneously moves all servos to PUT position."""
         print("\nReturning to PUT position smoothly...")
-        self.move_all_smooth(self.PUTPICK_POSITION, delay, max_step)
+        self.move_all_smooth(self.PUT_POSITION, delay, max_step)
         print("Arm is now at PUT.")
 
     def go_grab_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
@@ -295,7 +295,7 @@ class RobotArm:
             
             # if left < init_left - 0.1 and right < init_right - 0.1:
             #     break
-            if abs(left - init_left) > 0.08 or abs(right - init_right) > 0.08:
+            if abs(left - init_left) > 0.1 or abs(right - init_right) > 0.1:
                 break
 
             # Incrementally close towards 0 degrees

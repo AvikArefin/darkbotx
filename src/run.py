@@ -2,7 +2,7 @@ import time
 
 import torch
 
-from robot import RobotArm, RJoint
+from robot import RobotArm, RJoint, WIDE_GRIP
 from pointnet import PointNet
 
 
@@ -16,11 +16,17 @@ if __name__ == "__main__":
         results, emergency= arm.scan(slice=2)
 
         print(results)
+
+        arm.move_smooth(RJoint.GRIPPER, WIDE_GRIP)
+        arm.move_smooth(RJoint.WRIST_ROLL, 0)
+
         arm.go_lift_smooth()  # DOES NOT CONTROL GRIPPER or WRIST ROLL
 
         object = PointNet(measurements=results, height=3)
         object.export("test", scale=0.006)
 
+
+        arm.go_put_smooth()   # DOES NOT CONTROL GRIPPER
 
         try:
             policy_path = "logs/real/deployed_policy.pt"
@@ -37,18 +43,20 @@ if __name__ == "__main__":
                 action = policy(obs)
 
             arm.move_smooth(RJoint.WRIST_ROLL, action[0][0])
-            arm.go_putpick_smooth()   # DOES NOT CONTROL GRIPPER
             arm.move_smooth(RJoint.GRIPPER, action[0][1])
 
         except Exception:
             # TODO: Emergency Policy
             arm.move_smooth(RJoint.WRIST_ROLL, emergency[0])
-            arm.go_putpick_smooth()   # DOES NOT CONTROL GRIPPER
             arm.move_smooth(RJoint.GRIPPER, emergency[1])
 
         arm.go_lift_smooth()
-        arm.go_putpick_smooth()
-        arm.go_grab_smooth()
+        time.sleep(4)
+        arm.go_put_smooth()
+        
+        arm.move_smooth(RJoint.GRIPPER, WIDE_GRIP)
+        arm.move_smooth(RJoint.WRIST_ROLL, 0)
+
         arm.go_lift_smooth()
         arm.go_home_smooth()
         
