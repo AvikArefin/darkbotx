@@ -13,8 +13,8 @@ class Pin(IntEnum):
     """
 
     LEFT_FLEX = 0
-    RIGHT_FLEX = 1
-    LEFT_FORCE = 2
+    LEFT_FORCE = 1
+    RIGHT_FLEX = 2
     RIGHT_FORCE = 3
 
 
@@ -23,11 +23,6 @@ class SensorError(Exception):
 
     pass
 
-
-# TODO: Upon initialization, automatically set the current voltages as the defaults,
-# and LESS?? or MORE??? than that initial value,
-# should indicate that the we are getting `force` i.e. data on that sensor
-# the v_min and v_max needs to be dynamic
 class Sensor:
     def __init__(self, channels: int, i2c: busio.I2C) -> None:
         try:
@@ -62,7 +57,7 @@ class Sensor:
             v = self.ports[pin].voltage
         except Exception as e:
             raise SensorError(f"Failed to read voltage on pin {pin}: {e}") from e
-        return v
+        return round(v, 3)
 
     def get_all_voltages(self) -> list[float]:
         """Returns a list of voltages from all 4 pins."""

@@ -63,9 +63,9 @@ class RobotArm:
         15: WIDE_GRIP,
     }
 
-    PUT_POSITION: dict[int, int] = {
+    PUTPICK_POSITION: dict[int, int] = {
         # 0: 10,
-        1: 0,
+        # 1: 0,
         2: 0,
         3: 50,
         4: 120,
@@ -75,10 +75,10 @@ class RobotArm:
 
     LIFT_POSITION: dict[int, int] = {
         # 0: 10,
-        1: 0,
-        2: 90,
+        # 1: 0,
+        2: 20,
         3: 90,
-        4: 90,
+        4: 60,
         5: 105,
         # 15: 10,
     }
@@ -247,10 +247,10 @@ class RobotArm:
         self.move_all_smooth(self.LIFT_POSITION, delay, max_step)
         print("Arm is now at LIFT.")
 
-    def go_put_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
-        """Smoothly and simultaneously moves all servos to PUT."""
+    def go_putpick_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
+        """Smoothly and simultaneously moves all servos to PUT / PICK position."""
         print("\nReturning to PUT position smoothly...")
-        self.move_all_smooth(self.PUT_POSITION, delay, max_step)
+        self.move_all_smooth(self.PUTPICK_POSITION, delay, max_step)
         print("Arm is now at PUT.")
 
     def go_grab_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
@@ -286,7 +286,7 @@ class RobotArm:
 
         while current_angle > 0:
             left = self.sensor.get_voltage(pin=Pin.LEFT_FLEX)
-            # right = self.sensor.get_voltage(pin=Pin.RIGHT_FLEX)
+            right = self.sensor.get_voltage(pin=Pin.RIGHT_FLEX)
 
             # Stop when BOTH sensors drop below the threshold (indicating solid contact)
             # TODO: we would need to decide on `or` and `and` and also when the data capture should occur.
@@ -295,7 +295,7 @@ class RobotArm:
             
             # if left < init_left - 0.1 and right < init_right - 0.1:
             #     break
-            if abs(left - init_left) > 0.1:
+            if abs(left - init_left) > 0.08 or abs(right - init_right) > 0.08:
                 break
 
             # Incrementally close towards 0 degrees
