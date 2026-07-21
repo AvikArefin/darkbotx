@@ -1,5 +1,6 @@
 from enum import IntEnum
 import time
+import threading
 
 from dataclasses import dataclass
 
@@ -95,7 +96,8 @@ class RobotArm:
 
     def __init__(self):
         self._i2c_bus = busio.I2C(board.SCL, board.SDA)
-        self.sensor = Sensor(channels=4, i2c=self._i2c_bus)
+        self.i2c_lock = threading.Lock()
+        self.sensor = Sensor(channels=4, i2c=self._i2c_bus, lock=self.i2c_lock)
         self.kit = ServoKit(channels=16, i2c=self._i2c_bus)
 
         self.current_angles: dict[int, float] = {}
@@ -105,6 +107,11 @@ class RobotArm:
     def deinit(self):
         """Releases the I2C bus when shutting down."""
         self._i2c_bus.deinit()
+
+    def set_servo_angle(self, channel: int, angle: float | int) -> None:
+        """Sets a servo angle in a thread-safe manner."""
+        with self.i2c_lock:
+            self.kit.servo[channel].angle = int(angle)
 
     def _setup_servos(self) -> None:
         """Initializes servos with individual pulse width ranges."""
@@ -122,13 +129,14 @@ class RobotArm:
                 time.sleep(1)
 
             for ch, servo in self.SERVO_CONFIG.items():
-                self.kit.servo[ch].set_pulse_width_range(
-                    servo.min_pulse, servo.max_pulse
-                )
-                self.kit.servo[ch].actuation_range = servo.angle_range
+                with self.i2c_lock:
+                    self.kit.servo[ch].set_pulse_width_range(
+                        servo.min_pulse, servo.max_pulse
+                    )
+                    self.kit.servo[ch].actuation_range = servo.angle_range
 
                 home_angle = self.HOME_POSITION[ch]
-                self.kit.servo[ch].angle = home_angle
+                self.set_servo_angle(ch, home_angle)
                 self.current_angles[ch] = float(home_angle)
 
             self._initialized = True
@@ -168,10 +176,10 @@ class RobotArm:
 
         while abs(safe_target - current) > step_size:
             current += step_size * direction
-            self.kit.servo[channel].angle = current  # type: ignore
+            self.set_servo_angle(channel, current)
             time.sleep(delay)
 
-        self.kit.servo[channel].angle = safe_target  # type: ignore
+        self.set_servo_angle(channel, safe_target)
         self.current_angles[channel] = safe_target
         return True
 
@@ -223,7 +231,7 @@ class RobotArm:
             for ch in distances.keys():
                 # Linear interpolation: move proportionally based on the current step
                 current_target = start_angles[ch] + (distances[ch] * (step / steps))
-                self.kit.servo[ch].angle = int(current_target)
+                self.set_servo_angle(ch, current_target)
                 self.current_angles[ch] = current_target
 
             # Pause once per step to control overall speed
@@ -232,7 +240,7 @@ class RobotArm:
         # 5. Lock in the exact final target angles to account for float math drift
         for ch in distances.keys():
             safe_target = start_angles[ch] + distances[ch]
-            self.kit.servo[ch].angle = int(safe_target)
+            self.set_servo_angle(ch, safe_target)
             self.current_angles[ch] = safe_target
 
     def go_home_smooth(self, delay: float = 0.01, max_step: float = 1.0) -> None:
@@ -293,14 +301,13 @@ class RobotArm:
             # For test purpose, we will be only checking the left flex as the rest of the values are floating (constantly changing), 
             # when non connected.
             
-            # if left < init_left - 0.1 and right < init_right - 0.1:
-            #     break
-            if abs(left - init_left) > 0.1 or abs(right - init_right) > 0.1:
+            if ((left - init_left) > 0.1 and (right - init_right) > 0.11) or ((left - init_left) > 0.15 or (right - init_right) > 0.15):
                 break
+
 
             # Incrementally close towards 0 degrees
             current_angle = max(0.0, current_angle - 1.0)
-            self.kit.servo[channel].angle = int(current_angle)
+            self.set_servo_angle(channel, current_angle)
             self.current_angles[channel] = current_angle
 
             time.sleep(delay)

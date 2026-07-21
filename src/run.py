@@ -13,7 +13,7 @@ if __name__ == "__main__":
         arm.go_grab_smooth()
         time.sleep(5)
 
-        results, emergency= arm.scan(slice=2)
+        results, emergency= arm.scan(slice=6)
 
         print(results)
 
@@ -25,8 +25,7 @@ if __name__ == "__main__":
         object = PointNet(measurements=results, height=3)
         object.export("test", scale=0.006)
 
-
-        arm.go_put_smooth()   # DOES NOT CONTROL GRIPPER
+        arm.go_put_smooth()   # DOES NOT CONTROL GRIPPER or WRIST ROLL
 
         try:
             policy_path = "logs/real/deployed_policy.pt"
